@@ -1594,7 +1594,15 @@ const StoreProfile = ({ push, selectedStore, feedOutfits, allItems }) => {
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--cream-50)' }}>
       <div style={{ padding: '52px 16px 8px', display: 'flex', justifyContent: 'space-between' }}>
         <IconBtn icon="arrow-left" onClick={() => push('feed')} />
-        <IconBtn icon="share" />
+        <IconBtn icon="share" onClick={() => {
+          const text = `Check out ${store.name || 'this store'} on Stylography!`;
+          const url = window.location.href;
+          if (navigator.share) {
+            navigator.share({ title: store.name, text, url }).catch(() => {});
+          } else {
+            navigator.clipboard.writeText(`${text} ${url}`).then(() => alert('Link copied!')).catch(() => {});
+          }
+        }} />
       </div>
       <div style={{ flex: 1, overflowY: 'auto', padding: '0 0 100px' }}>
         <div style={{ padding: '8px 20px' }}>
