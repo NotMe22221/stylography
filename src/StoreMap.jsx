@@ -12,6 +12,18 @@ function loadLeafletCSS() {
   link.rel = 'stylesheet';
   link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
   document.head.appendChild(link);
+
+  // Fix marker icon click area
+  const style = document.createElement('style');
+  style.textContent = `
+    .store-marker-icon {
+      background: transparent !important;
+      border: none !important;
+      cursor: pointer !important;
+    }
+  `;
+  document.head.appendChild(style);
+
   leafletLoaded = true;
 }
 
@@ -124,16 +136,21 @@ export default function StoreMap({ push, allItems }) {
       });
 
       const storeIcon = L.divIcon({
-        html: `<div style="width:32px;height:32px;border-radius:50%;background:#5B4D7A;border:3px solid #fff;box-shadow:0 2px 10px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center;font-size:16px">🏪</div>`,
-        iconSize: [32, 32],
-        iconAnchor: [16, 16],
-        className: '',
+        html: `<div style="width:36px;height:36px;border-radius:50%;background:#5B4D7A;border:3px solid #fff;box-shadow:0 2px 10px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center;font-size:16px;pointer-events:none">🏪</div>`,
+        iconSize: [36, 36],
+        iconAnchor: [18, 18],
+        className: 'store-marker-icon',
       });
 
       storesWithPos.forEach(store => {
-        const marker = L.marker([store.lat, store.lng], { icon: storeIcon })
-          .addTo(mapRef.current)
-          .on('click', () => setSelected(store));
+        const marker = L.marker([store.lat, store.lng], {
+          icon: storeIcon,
+          interactive: true,
+          bubblingMouseEvents: false,
+        }).addTo(mapRef.current);
+        marker.on('click', () => {
+          setSelected(store);
+        });
         markersRef.current.push(marker);
       });
 
