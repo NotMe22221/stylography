@@ -17,5 +17,13 @@ service firebase.storage {
                    && request.resource.size < 10 * 1024 * 1024
                    && request.resource.contentType.matches('image/.*');
     }
+
+    // AI-generated outfit board images — only the store owner can write
+    match /stores/{storeId}/outfits/{fileName} {
+      allow read: if true;
+      allow write: if request.auth != null && request.auth.uid == storeId
+                   && request.resource.size < 10 * 1024 * 1024
+                   && request.resource.contentType.matches('image/.*');
+    }
   }
 }

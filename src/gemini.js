@@ -112,14 +112,18 @@ Create a stylish outfit featuring these exact pieces styled together as one cohe
 
 ${descriptions}
 
-CLOTHING DETAIL INSTRUCTIONS: 
-Accurately render every specific detail, fabric texture, pattern, and color mentioned in the descriptions above. The clothing must look photorealistic with visible fabric weaves, stitching, hardware, and precise cuts. 
+LAYOUT INSTRUCTIONS:
+- No model or mannequin — items only, laid flat or slightly propped.
+- Arrange items as if a person just stepped out of them: top garment at the top, bottoms below, shoes at the bottom, bags and accessories placed naturally to the sides.
+- Items should slightly overlap or be spaced closely together to feel like a cohesive styled look, not scattered randomly.
+- Small accessories (jewelry, glasses, bag) placed around the outfit naturally.
 
-SETTING AND STYLE:
-- Clean, minimalist, seamless studio backdrop (soft white or neutral grey).
-- High-fashion commercial photography, soft even studio lighting to highlight the clothing textures without harsh shadows.
-- Sharp focus on the outfit, shot on 85mm lens, 8k resolution, hyper-realistic.
-- The model is posed naturally to showcase how the garments drape, fit, and layer together as a cohesive, wearable look.`;
+VISUAL STYLE:
+- Pure white seamless background.
+- Soft, even flat lay lighting — no harsh shadows, slight natural drop shadow under each piece.
+- Photorealistic fabric textures, accurate colors, visible stitching and material detail.
+- Editorial mood board / Pinterest flat lay aesthetic.
+- Shot from directly overhead (top-down bird's eye view), 8k resolution, hyper-realistic.`;
 
   // Attach item photos as visual context
   const parts = [{ text: prompt }];
