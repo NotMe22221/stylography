@@ -1,0 +1,81 @@
+/* ─── Design tokens ─────────────────────────────────────────── */
+:root {
+  /* Backgrounds */
+  --cream-50:  #FDFAF5;
+  --cream-100: #F5EFE3;
+  --cream-200: #E8DCC8;
+  --surface:   #FFFFFF;
+  --line:      #E2D9C8;
+
+  /* Text */
+  --ink-400: #9B8E7E;
+  --ink-500: #6B5E50;
+  --ink-700: #3A2E24;
+  --ink-900: #1F1810;
+
+  /* Aubergine (brand primary) */
+  --aubergine-100: #EDE8F5;
+  --aubergine-500: #7B6898;
+  --aubergine-600: #5B4D7A;
+
+  /* Blush */
+  --blush-100: #FAF0ED;
+  --blush-500: #D4A5A5;
+
+  /* Sage */
+  --sage-200: #D0DBD0;
+  --sage-500: #7A9B7A;
+
+  /* Clay / plum */
+  --clay-500:  #B88468;
+  --plum-900:  #2A1F3A;
+
+  /* Radius */
+  --r-sm:   8px;
+  --r-md:   12px;
+  --r-pill: 999px;
+
+  /* Shadow */
+  --shadow-sm: 0 1px 3px rgba(31,24,16,0.08);
+  --shadow-md: 0 4px 16px rgba(31,24,16,0.12);
+
+  /* Fonts */
+  --font-display: 'Fraunces', Georgia, serif;
+  --font-body:    'Figtree', system-ui, sans-serif;
+}
+
+/* ─── Reset ─────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body, #root {
+  height: 100%;
+  font-family: var(--font-body);
+  background: var(--cream-50);
+  color: var(--ink-900);
+  -webkit-font-smoothing: antialiased;
+}
+
+button { border: none; background: none; font-family: inherit; cursor: pointer; }
+input, select, textarea { font-family: inherit; }
+
+.display { font-family: var(--font-display); }
+
+/* ─── Animations ─────────────────────────────────────────────── */
+@keyframes fadeIn    { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes pulse     { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+@keyframes spin      { to { transform: rotate(360deg); } }
+@keyframes scan      { 0% { top: 6%; } 100% { top: 88%; } }
+@keyframes shimmer   {
+  0%   { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
+}
+
+.animate-fade-in { animation: fadeIn 0.4s ease both; }
+
+/* ─── Skeleton loader ────────────────────────────────────────── */
+.skeleton {
+  background: linear-gradient(90deg, var(--cream-100) 25%, var(--cream-200) 50%, var(--cream-100) 75%);
+  background-size: 400px 100%;
+  animation: shimmer 1.4s infinite;
+  border-radius: var(--r-sm);
+}

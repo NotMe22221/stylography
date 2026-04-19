@@ -1,8 +1,7 @@
-// Garment SVG illustrations — flat, warm-toned, outfit board imagery
-// Each returns an SVG filling its parent. All use simple shapes + CSS vars.
+import React from 'react';
 
-const GarmentSVG = ({ kind, color = '#B88468', accent = '#3A2E3A', style = {} }) => {
-  // kind: top, dress, pants, skirt, shoes, jacket, bag, hat, accessory
+// Garment SVG illustrations — flat, warm-toned, outfit board imagery
+export const GarmentSVG = ({ kind, color = '#B88468', accent = '#3A2E3A', style = {} }) => {
   const svgProps = {
     viewBox: '0 0 100 140',
     preserveAspectRatio: 'xMidYMid meet',
@@ -159,14 +158,14 @@ const GarmentSVG = ({ kind, color = '#B88468', accent = '#3A2E3A', style = {} })
   }
 };
 
-// Garment "photo card" — frames a garment on a colored bg to look like a product shot
-const GarmentCard = ({ kind, color, bg, accent, label, price, store, size = 'md', onClick, selected, saved, style = {} }) => {
+// Garment "photo card"
+export const GarmentCard = ({ kind, color, bg, accent, label, price, store, size = 'md', onClick, selected, saved, style = {} }) => {
   const sizes = {
-    xs: { w: 80, h: 100, fs: 10 },
-    sm: { w: 120, h: 150, fs: 11 },
-    md: { w: 160, h: 200, fs: 12 },
-    lg: { w: 200, h: 250, fs: 13 },
-    fill: { w: '100%', h: '100%', fs: 12 },
+    xs:   { w: 80,    h: 100,   fs: 10 },
+    sm:   { w: 120,   h: 150,   fs: 11 },
+    md:   { w: 160,   h: 200,   fs: 12 },
+    lg:   { w: 200,   h: 250,   fs: 13 },
+    fill: { w: '100%',h: '100%',fs: 12 },
   };
   const s = sizes[size];
   return (
@@ -176,8 +175,7 @@ const GarmentCard = ({ kind, color, bg, accent, label, price, store, size = 'md'
         width: s.w, height: s.h,
         borderRadius: 'var(--r-md)',
         background: bg || 'var(--cream-100)',
-        position: 'relative',
-        overflow: 'hidden',
+        position: 'relative', overflow: 'hidden',
         cursor: onClick ? 'pointer' : 'default',
         border: selected ? '2px solid var(--aubergine-600)' : '1px solid var(--line)',
         transition: 'transform .2s, box-shadow .2s',
@@ -191,26 +189,14 @@ const GarmentCard = ({ kind, color, bg, accent, label, price, store, size = 'md'
         <GarmentSVG kind={kind} color={color} accent={accent} />
       </div>
       {saved && (
-        <div style={{
-          position: 'absolute', top: 8, right: 8,
-          width: 28, height: 28, borderRadius: '50%',
-          background: 'var(--surface)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-          boxShadow: 'var(--shadow-sm)',
-        }}>
+        <div style={{ position: 'absolute', top: 8, right: 8, width: 28, height: 28, borderRadius: '50%', background: 'var(--surface)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: 'var(--shadow-sm)' }}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="var(--aubergine-600)">
             <path d="M12 21s-7-4.5-9.5-9A5.5 5.5 0 0112 5.5 5.5 5.5 0 0121.5 12c-2.5 4.5-9.5 9-9.5 9z" />
           </svg>
         </div>
       )}
       {(label || price) && size !== 'xs' && (
-        <div style={{
-          position: 'absolute', left: 0, right: 0, bottom: 0,
-          padding: '10px 12px',
-          background: 'linear-gradient(transparent, rgba(31, 24, 32, 0.55))',
-          color: '#fff',
-          fontSize: s.fs,
-          lineHeight: 1.3,
-        }}>
+        <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, padding: '10px 12px', background: 'linear-gradient(transparent, rgba(31,24,32,0.55))', color: '#fff', fontSize: s.fs, lineHeight: 1.3 }}>
           {label && <div style={{ fontWeight: 500 }}>{label}</div>}
           {(price || store) && (
             <div style={{ display: 'flex', justifyContent: 'space-between', opacity: 0.9, fontSize: s.fs - 1 }}>
@@ -223,5 +209,3 @@ const GarmentCard = ({ kind, color, bg, accent, label, price, store, size = 'md'
     </div>
   );
 };
-
-Object.assign(window, { GarmentSVG, GarmentCard });

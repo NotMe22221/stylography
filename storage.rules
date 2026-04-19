@@ -1,0 +1,21 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // Store hero photos — only the store owner can write
+    match /stores/{storeId}/hero {
+      allow read: if true;
+      allow write: if request.auth != null && request.auth.uid == storeId
+                   && request.resource.size < 10 * 1024 * 1024
+                   && request.resource.contentType.matches('image/.*');
+    }
+
+    // Item photos — only the store owner can write
+    match /stores/{storeId}/items/{fileName} {
+      allow read: if true;
+      allow write: if request.auth != null && request.auth.uid == storeId
+                   && request.resource.size < 10 * 1024 * 1024
+                   && request.resource.contentType.matches('image/.*');
+    }
+  }
+}

@@ -1,0 +1,81 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Helpers ──────────────────────────────────────────────────────────────
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    // ── Stores ───────────────────────────────────────────────────────────────
+    // Store owners can read/write their own store doc.
+    // Anyone can read store docs (public profile).
+    match /stores/{storeId} {
+      allow read: if true;
+      allow create: if isOwner(storeId);
+      allow update: if isOwner(storeId);
+      allow delete: if false;
+    }
+
+    // ── Items ─────────────────────────────────────────────────────────────────
+    // Active items are publicly readable.
+    // Only the owning store can write.
+    match /items/{itemId} {
+      allow read: if true;
+      allow create: if isSignedIn() && request.resource.data.storeId == request.auth.uid;
+      allow update: if isSignedIn() && resource.data.storeId == request.auth.uid;
+      allow delete: if false; // soft-delete via status field
+    }
+
+    // ── Outfits ───────────────────────────────────────────────────────────────
+    // Publicly readable; only authenticated store owners can create/update.
+    match /outfits/{outfitId} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    // ── Events ────────────────────────────────────────────────────────────────
+    // Anyone can write analytics events (anonymous shoppers too).
+    // Only the store owner can read their own store's events.
+    match /events/{eventId} {
+      allow create: if true;
+      allow read: if isSignedIn() && resource.data.storeId == request.auth.uid;
+    }
+
+    // ── Claims ────────────────────────────────────────────────────────────────
+    // Shoppers can create claims and read their own.
+    // Store owners can read/update claims for their store.
+    match /claims/{claimId} {
+      allow read: if isSignedIn() && (
+        resource.data.buyerId   == request.auth.uid ||
+        resource.data.shopperId == request.auth.uid ||
+        resource.data.storeId   == request.auth.uid
+      );
+      // Authenticated shoppers can create claims where buyerId matches their uid
+      allow create: if isSignedIn() && (
+        request.resource.data.buyerId   == request.auth.uid ||
+        request.resource.data.shopperId == request.auth.uid
+      );
+      // Store owners can update (confirm/decline); shoppers can't update
+      allow update: if isSignedIn() && resource.data.storeId == request.auth.uid;
+      allow delete: if false;
+    }
+
+    // ── Users (shoppers) ─────────────────────────────────────────────────────
+    // Users can read/write their own profile.
+    match /users/{userId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId);
+      allow update: if isOwner(userId);
+      allow delete: if false;
+
+      // Saves subcollection
+      match /saves/{saveId} {
+        allow read, write: if isOwner(userId);
+      }
+    }
+  }
+}
