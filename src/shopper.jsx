@@ -1610,7 +1610,12 @@ const StoreProfile = ({ push, selectedStore, feedOutfits, allItems }) => {
           )}
           <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
             <Btn variant="accent" size="md">Follow</Btn>
-            <Btn variant="soft" size="md" icon={<Icon name="pin" size={14} />}>Directions</Btn>
+            <Btn variant="soft" size="md" icon={<Icon name="pin" size={14} />} onClick={() => {
+              const q = store.address
+                ? `${store.address}, ${store.city || ''}`
+                : store.city || store.name || 'store';
+              window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`, '_blank');
+            }}>Directions</Btn>
           </div>
         </div>
 
