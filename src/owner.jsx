@@ -604,7 +604,11 @@ const RecentClaims = ({ claims, items }) => {
   const rows = claims.slice(0, 4);
 
   const confirmClaim = async (claimId) => {
-    await updateDoc(doc(db, 'claims', claimId), { status: 'confirmed', updatedAt: serverTimestamp() });
+    await updateDoc(doc(db, 'claims', claimId), {
+      status: 'confirmed',
+      pickupStatus: 'ready_for_pickup',
+      updatedAt: serverTimestamp(),
+    });
     const claim = claims.find(c => c.id === claimId);
     if (claim?.itemId) {
       updateDoc(doc(db, 'items', claim.itemId), { status: 'reserved', updatedAt: serverTimestamp() }).catch(() => {});
@@ -615,8 +619,8 @@ const RecentClaims = ({ claims, items }) => {
     const map = {
       pending:         { bg: 'var(--blush-100)',  c: 'var(--plum-900)', label: 'Needs response' },
       pending_payment: { bg: '#FEF3C7',            c: '#92400E',         label: 'Awaiting payment' },
-      paid:            { bg: 'var(--sage-200)',    c: '#2E3A2E',         label: '✓ Paid · Stripe' },
-      confirmed:       { bg: 'var(--aubergine-100)', c: 'var(--aubergine-600)', label: 'Confirmed' },
+      paid:            { bg: 'var(--sage-200)',    c: '#2E3A2E',         label: '✓ Paid · Awaiting pickup' },
+      confirmed:       { bg: 'var(--aubergine-100)', c: 'var(--aubergine-600)', label: 'Ready for pickup' },
       completed:       { bg: 'var(--cream-100)',   c: 'var(--ink-500)', label: 'Picked up' },
     };
     const v = map[s] || map.pending;
@@ -1109,14 +1113,23 @@ const OwnerInventory = ({ items }) => {
 const OwnerClaims = ({ claims, items }) => {
   const confirmClaim = async (id) => {
     const claim = claims.find(c => c.id === id);
-    await updateDoc(doc(db, 'claims', id), { status: 'confirmed', updatedAt: serverTimestamp() });
+    await updateDoc(doc(db, 'claims', id), {
+      status: 'confirmed',
+      pickupStatus: 'ready_for_pickup',
+      updatedAt: serverTimestamp(),
+    });
     // Mark item reserved so it's hidden from other shoppers
     if (claim?.itemId) {
       updateDoc(doc(db, 'items', claim.itemId), { status: 'reserved', updatedAt: serverTimestamp() }).catch(() => {});
     }
   };
   const completeClaim = async (id, itemId, storeId, amount) => {
-    await updateDoc(doc(db, 'claims', id), { status: 'completed', updatedAt: serverTimestamp() });
+    await updateDoc(doc(db, 'claims', id), {
+      status: 'completed',
+      pickupStatus: 'picked_up',
+      pickedUpAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
     await updateDoc(doc(db, 'items', itemId), { status: 'sold', updatedAt: serverTimestamp() });
     // Credit store balance for non-Stripe (pay-at-pickup) transactions
     if (storeId && amount > 0) {

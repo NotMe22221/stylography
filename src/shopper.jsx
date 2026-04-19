@@ -862,8 +862,11 @@ export const ClaimSheet = ({ item, user, onClose, onConfirm, resolvedStore }) =>
             window.location.href = data.url;
             return;
           }
+          throw new Error('Checkout did not return a redirect URL');
         } catch (stripeErr) {
-          console.warn('Stripe checkout unavailable, falling back to in-app claim:', stripeErr.message);
+          console.error('Stripe checkout failed:', stripeErr.message);
+          alert('Checkout is unavailable right now. Please try again in a moment.');
+          return;
         }
       }
 
@@ -1510,6 +1513,10 @@ const ItemDetail = ({ push, selectedItem, savedItems, toggleSaveItem, user, setC
   ].filter(Boolean);
 
   const handleClaim = async () => {
+    if (!user) {
+      alert('Please sign in to claim an item.');
+      return;
+    }
     setLoading(true);
     try {
       const { data } = await createCheckoutSession({
@@ -1527,12 +1534,13 @@ const ItemDetail = ({ push, selectedItem, savedItems, toggleSaveItem, user, setC
         window.location.href = data.url;
         return;
       }
+      throw new Error('Checkout did not return a redirect URL');
     } catch (err) {
-      console.warn('Stripe not available, using in-app claim:', err.message);
+      console.error('Stripe checkout failed:', err.message);
+      alert('Checkout is unavailable right now. Please try again.');
     } finally {
       setLoading(false);
     }
-    setClaimOpen(true);
   };
 
   return (
