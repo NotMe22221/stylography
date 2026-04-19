@@ -2,6 +2,33 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 
 const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
 
+/** Inventory photos carry prints/colors/silhouettes — keep on unless you need text-only renders. Set to "false" to disable. */
+const OUTFIT_IMAGE_INCLUDE_REFERENCES =
+  import.meta.env.VITE_OUTFIT_IMAGE_INCLUDE_REFERENCES !== "false";
+
+/**
+ * Rich text for one inventory item so image gen can match the real SKU.
+ * @param {object} item
+ * @param {number} index 0-based
+ */
+function describePieceForOutfitRender(item, index) {
+  const tags = item.aiTags || {};
+  const lines = [
+    `${item.title || item.name || `Item ${index + 1}`}`,
+    tags.category && `Category: ${tags.category}`,
+    (tags.era || item.era) && `Era: ${tags.era || item.era}`,
+    tags.color && `Color: ${tags.color}`,
+    tags.style && `Style cluster: ${tags.style}`,
+    tags.material && `Material: ${tags.material}`,
+    item.size && `Size: ${item.size}`,
+    item.condition && `Condition: ${item.condition}`,
+    item.visualDescription &&
+      `Visual detail (preserve exactly — patterns, cut, trim, graphics): ${item.visualDescription}`,
+    item.notes && `Seller notes: ${item.notes}`,
+  ].filter(Boolean);
+  return lines.join("\n");
+}
+
 /**
  * Tag a clothing item from a base64 image.
  * Returns { category, era, color, style, material, confidence }
@@ -89,7 +116,8 @@ Rules:
 
 /**
  * Generate an AI outfit image from selected pieces.
- * Sends item photos as visual context and returns a styled flat-lay image.
+ * Uses each item's photo (when enabled) plus rich tags + visualDescription so the render matches real SKUs.
+ * Set VITE_OUTFIT_IMAGE_INCLUDE_REFERENCES=false for text-only (less faithful).
  *
  * @param {Array} selectedItems — 1–4 Firestore item objects
  * @returns {{ dataUrl: string, mimeType: string, base64: string }}
@@ -100,23 +128,25 @@ export async function generateOutfitImage(selectedItems) {
     systemInstruction: `You generate flat-lay product photography only.
 Hard rules for every image:
 - Show ONLY clothing and accessories as physical objects on a surface. No people, no body parts, no faces, hands, hair, or skin. No mannequins, dress forms, or torsos.
-- If reference photos show garments on a model or hanger, ignore the person and hanger — extract the garments and render them laid flat.`,
+- Reference photos show real inventory SKUs: reproduce each garment's design faithfully (prints, colors, silhouette). Ignore any person, floor, or background in those photos.`,
   });
 
-  const descriptions = selectedItems
-    .map(
-      (i) =>
-        `${i.name} — ${i.aiTags?.category || i.kind}, ${i.aiTags?.era || i.era || ""}, ${i.aiTags?.color || ""}`,
-    )
-    .join("\n");
+  const n = selectedItems.length;
 
-  const prompt = `CRITICAL — OUTPUT FORMAT:
+  const referenceModeNote = OUTFIT_IMAGE_INCLUDE_REFERENCES
+    ? `Each piece below includes its product photo when available — that photo is the ground truth for design detail.`
+    : `Product photos are disabled — use only the text descriptions (less accurate vs real inventory).`;
+
+  const preamble = `CRITICAL — OUTPUT FORMAT:
 Generate ONE image: pure flat-lay / overhead product shot. Absolutely zero humans, zero mannequins, zero implied bodies.
 
-The attached photos may show items on models or hangers — treat them ONLY as color/texture reference for the garments themselves. Do not recreate or echo any person from the references.
+FIDELITY TO THESE EXACT PRODUCTS (${n} piece${n === 1 ? "" : "s"}):
+${referenceModeNote}
+- Match each garment to its specifications: same prints, plaids, stripes, graphics, logo art, color blocking, wash, distressing, silhouette, neckline, sleeve length, hem shape, pocket placement, buttons, zippers, and fabric texture.
+- Do not substitute generic or "similar" items — these are specific SKUs.
+- If a reference photo shows a model or hanger, extract only the garment and render it laid flat; do not copy the human figure or scene.
 
-Pieces to combine into one styled board:
-${descriptions}
+The sections below walk through Piece 1 … Piece ${n} in order. Each following photo block belongs to that piece number.
 
 LAYOUT INSTRUCTIONS:
 - No model or mannequin — items only, laid flat or slightly propped.
@@ -133,10 +163,14 @@ VISUAL STYLE:
 
 FORBIDDEN IN THE FINAL IMAGE (do not render): people, models, faces, limbs, skin, mannequins, ghost mannequins, hangers that suggest a body, dressing rooms, mirrors with reflections, runway, street style photography.`;
 
-  // Attach item photos as visual context
-  const parts = [{ text: prompt }];
-  for (const item of selectedItems) {
-    if (item.imageUrl) {
+  const parts = [{ text: preamble }];
+
+  for (let i = 0; i < selectedItems.length; i++) {
+    const item = selectedItems[i];
+    parts.push({
+      text: `\n--- Piece ${i + 1} of ${n} — must appear in the flat lay as this exact product ---\n${describePieceForOutfitRender(item, i)}\n`,
+    });
+    if (OUTFIT_IMAGE_INCLUDE_REFERENCES && item.imageUrl) {
       try {
         const resp = await fetch(item.imageUrl);
         const blob = await resp.blob();
@@ -146,11 +180,20 @@ FORBIDDEN IN THE FINAL IMAGE (do not render): people, models, faces, limbs, skin
           r.readAsDataURL(blob);
         });
         parts.push({
+          text: `[Attached image: inventory photo for Piece ${i + 1}. Recreate this garment exactly in the flat lay; ignore people and backgrounds.]`,
+        });
+        parts.push({
           inlineData: { mimeType: blob.type || "image/jpeg", data: b64 },
         });
       } catch {
-        /* skip if image fetch fails */
+        parts.push({
+          text: `[Photo for Piece ${i + 1} failed to load — rely on the text description above.]`,
+        });
       }
+    } else if (!item.imageUrl && OUTFIT_IMAGE_INCLUDE_REFERENCES) {
+      parts.push({
+        text: `[No inventory photo for Piece ${i + 1} — use only the text description.]`,
+      });
     }
   }
 
