@@ -289,10 +289,11 @@ export default function DashboardGuide({ userId, onDismiss }) {
 
     if (userId) {
       try {
-        await updateDoc(doc(db, 'stores', userId), {
-          guideTourCompleted: true,
-          guideTourCompletedAt: serverTimestamp(),
-        });
+        // DEV: Commented out for testing — uncomment for production
+        // await updateDoc(doc(db, 'stores', userId), {
+        //   guideTourCompleted: true,
+        //   guideTourCompletedAt: serverTimestamp(),
+        // });
       } catch { /* non-critical */ }
     }
   }, [userId, onDismiss, stopSpeech]);

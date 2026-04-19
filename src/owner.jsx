@@ -28,10 +28,8 @@ export default function StoreOwnerApp({ user }) {
       if (snap.exists()) {
         const data = snap.data();
         setStore({ id: snap.id, ...data });
-        // Show guide tour on first dashboard visit
-        if (!data.guideTourCompleted) {
-          setShowGuide(true);
-        }
+        // DEV: Always show guide on load for testing. Change back to (!data.guideTourCompleted) for production.
+        setShowGuide(true);
       }
       setLoading(false);
     });
