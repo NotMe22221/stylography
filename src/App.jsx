@@ -41,7 +41,13 @@ export default function App() {
       if (!firebaseUser) {
         setUser(null);
         setRole(null);
-        setAppState('landing');
+        // Check if user previously chose "I'm shopping" (guest mode)
+        if (localStorage.getItem('stylography_role') === 'shopper') {
+          setRole('shopper');
+          setAppState('shopper-app');
+        } else {
+          setAppState('landing');
+        }
         return;
       }
       setUser(firebaseUser);
@@ -50,6 +56,7 @@ export default function App() {
       const storeSnap = await getDoc(doc(db, 'stores', firebaseUser.uid));
       if (storeSnap.exists()) {
         setRole('store');
+        localStorage.setItem('stylography_role', 'store');
         const onboarded = storeSnap.data().onboarded === true;
         setAppState(onboarded ? 'dashboard' : 'onboarding');
         return;
@@ -59,6 +66,7 @@ export default function App() {
       const userSnap = await getDoc(doc(db, 'users', firebaseUser.uid));
       if (userSnap.exists()) {
         setRole('shopper');
+        localStorage.setItem('stylography_role', 'shopper');
         setAppState('shopper-app');
         return;
       }
@@ -78,7 +86,7 @@ export default function App() {
   }
 
   if (appState === 'landing') {
-    return <Landing onShopper={() => setAppState('shopper-auth')} onStore={() => setAppState('store-auth')} />;
+    return <Landing onShopper={() => { localStorage.setItem('stylography_role', 'shopper'); setAppState('shopper-auth'); }} onStore={() => setAppState('store-auth')} />;
   }
 
   if (appState === 'shopper-auth') {
@@ -103,7 +111,7 @@ export default function App() {
         user={user}
         initialScreen={stripeSuccess ? 'feed' : (user ? 'welcome' : 'feed')}
         stripeSuccess={stripeSuccess}
-        onExit={() => { setUser(null); setRole(null); setAppState('landing'); }}
+        onExit={() => { setUser(null); setRole(null); localStorage.removeItem('stylography_role'); setAppState('landing'); }}
       />
     );
   }
