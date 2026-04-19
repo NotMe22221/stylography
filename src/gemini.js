@@ -45,7 +45,9 @@ Return ONLY valid JSON, no markdown, no explanation.`;
  * @param {Array} items  — array of Firestore item objects
  */
 export async function suggestOutfits(items) {
-  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+  const model = genAI.getGenerativeModel({
+    model: "gemini-3.1-flash-image-preview",
+  });
 
   const catalog = items
     .map(
@@ -335,22 +337,34 @@ Describe only what you can see — do not guess brand or fabric if not visible.`
  * @param {Array}  items  — Firestore or seed items with name/kind/era/color/aiTags
  * @returns {{ description, styleCluster, keyPieces, matches }}
  */
-export async function ragSearchOutfitPieces(base64Image, mimeType = 'image/jpeg', items = []) {
-  const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+export async function ragSearchOutfitPieces(
+  base64Image,
+  mimeType = "image/jpeg",
+  items = [],
+) {
+  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
   // Build a concise catalog line per item — enough for Gemini to make a good match
-  const catalog = items.slice(0, 150).map((item, i) => {
-    const tags    = item.aiTags || {};
-    const era     = tags.era      || item.era   || '';
-    const color   = tags.color    || item.color || '';
-    const mat     = tags.material || '';
-    const style   = tags.style    || (Array.isArray(item.style) ? item.style[0] : item.style) || '';
-    const base    = [item.kind, era, color, mat, style].filter(Boolean).join(', ');
-    const desc    = item.visualDescription
-      ? item.visualDescription.slice(0, 200)
-      : base;
-    return `[${i}] ${item.name} — ${desc} | size ${item.size} | $${item.price}`;
-  }).join('\n');
+  const catalog = items
+    .slice(0, 150)
+    .map((item, i) => {
+      const tags = item.aiTags || {};
+      const era = tags.era || item.era || "";
+      const color = tags.color || item.color || "";
+      const mat = tags.material || "";
+      const style =
+        tags.style ||
+        (Array.isArray(item.style) ? item.style[0] : item.style) ||
+        "";
+      const base = [item.kind, era, color, mat, style]
+        .filter(Boolean)
+        .join(", ");
+      const desc = item.visualDescription
+        ? item.visualDescription.slice(0, 200)
+        : base;
+      return `[${i}] ${item.name} — ${desc} | size ${item.size} | $${item.price}`;
+    })
+    .join("\n");
 
   const prompt = `You are a thrift-store personal stylist. Study the outfit photo carefully.
 
@@ -387,32 +401,38 @@ Return ONLY valid JSON, no markdown:
     { inlineData: { mimeType, data: base64Image } },
   ]);
 
-  const text  = result.response.text().trim();
-  const clean = text.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
+  const text = result.response.text().trim();
+  const clean = text.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "");
   const parsed = JSON.parse(clean);
 
   const usedIndices = new Set();
   const matches = [];
-  for (const pieceResult of (parsed.matches || [])) {
+  for (const pieceResult of parsed.matches || []) {
     const alts = (pieceResult.alternatives || [])
-      .filter(a => typeof a.matchIndex === 'number' && items[a.matchIndex] && Number(a.score) >= 0.4 && !usedIndices.has(a.matchIndex))
+      .filter(
+        (a) =>
+          typeof a.matchIndex === "number" &&
+          items[a.matchIndex] &&
+          Number(a.score) >= 0.4 &&
+          !usedIndices.has(a.matchIndex),
+      )
       .slice(0, 3);
     for (const alt of alts) {
       usedIndices.add(alt.matchIndex);
       matches.push({
-        piece:  pieceResult.piece,
-        kind:   pieceResult.kind,
-        item:   items[alt.matchIndex],
-        score:  Math.min(Math.max(Number(alt.score) || 0, 0), 1),
-        reason: alt.reason || '',
+        piece: pieceResult.piece,
+        kind: pieceResult.kind,
+        item: items[alt.matchIndex],
+        score: Math.min(Math.max(Number(alt.score) || 0, 0), 1),
+        reason: alt.reason || "",
       });
     }
   }
 
   return {
-    description:  parsed.description  || '',
-    styleCluster: parsed.styleCluster || '',
-    keyPieces:    matches.map(m => ({ piece: m.piece, kind: m.kind })),
+    description: parsed.description || "",
+    styleCluster: parsed.styleCluster || "",
+    keyPieces: matches.map((m) => ({ piece: m.piece, kind: m.kind })),
     matches,
   };
 }
@@ -452,10 +472,10 @@ Return ONLY valid JSON:
   const result = await model.generateContent([
     prompt,
     { inlineData: { mimeType: inspirationMime, data: inspirationB64 } },
-    { inlineData: { mimeType: candidateMime,    data: candidateB64 } },
+    { inlineData: { mimeType: candidateMime, data: candidateB64 } },
   ]);
 
-  const text  = result.response.text().trim();
+  const text = result.response.text().trim();
   const clean = text.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "");
   return JSON.parse(clean);
 }
