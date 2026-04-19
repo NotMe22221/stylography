@@ -1574,15 +1574,20 @@ const ItemDetail = ({ push, selectedItem, savedItems, toggleSaveItem, user, setC
 // ─── Store Profile ────────────────────────────────────────────────────────────
 
 const StoreProfile = ({ push, selectedStore, feedOutfits, allItems }) => {
-  const store = storeById(selectedStore) || { name: 'Store', city: '', type: '', emoji: '🏪', color: '#5B4D7A', established: '' };
+  // selectedStore can be a string ID (from seed data) or a full store object (from Firestore/map)
+  const store = typeof selectedStore === 'object' && selectedStore !== null
+    ? selectedStore
+    : storeById(selectedStore) || { name: 'Store', city: '', type: '', emoji: '🏪', color: '#5B4D7A', established: '' };
+
+  const storeId = store.id || selectedStore;
 
   useEffect(() => {
-    if (selectedStore) trackEvent('store_view', { storeId: selectedStore });
-  }, [selectedStore]);
-  const items = allItems.filter(i => i.store === store.id || i.storeId === store.id);
+    if (storeId) trackEvent('store_view', { storeId });
+  }, [storeId]);
+  const items = allItems.filter(i => i.store === storeId || i.storeId === storeId);
   const outfits = feedOutfits.filter(o => (o.items || []).some(id => {
     const item = allItems.find(i => i.id === id) || byId(id);
-    return item?.store === store.id || item?.storeId === store.id;
+    return item?.store === storeId || item?.storeId === storeId;
   }));
 
   return (
@@ -1593,9 +1598,16 @@ const StoreProfile = ({ push, selectedStore, feedOutfits, allItems }) => {
       </div>
       <div style={{ flex: 1, overflowY: 'auto', padding: '0 0 100px' }}>
         <div style={{ padding: '8px 20px' }}>
-          <div style={{ width: 72, height: 72, borderRadius: 'var(--r-md)', background: store.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 32 }}>{store.emoji}</div>
+          <div style={{ width: 72, height: 72, borderRadius: 'var(--r-md)', background: store.color || '#5B4D7A', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 32, overflow: 'hidden' }}>
+            {store.heroImageUrl
+              ? <img src={store.heroImageUrl} style={{ width: 72, height: 72, objectFit: 'cover' }} alt="" />
+              : store.emoji || '🏪'}
+          </div>
           <h1 className="display" style={{ fontSize: 28, lineHeight: 1.05, margin: '14px 0 4px', fontWeight: 500 }}>{store.name}</h1>
           <div style={{ fontSize: 13, color: 'var(--ink-500)' }}>{store.type}{store.city ? ` · ${store.city}` : ''}{store.established ? ` · Est. ${store.established}` : ''}</div>
+          {store.bio && (
+            <p style={{ fontSize: 14, color: 'var(--ink-600)', lineHeight: 1.5, marginTop: 8, maxWidth: 400 }}>{store.bio}</p>
+          )}
           <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
             <Btn variant="accent" size="md">Follow</Btn>
             <Btn variant="soft" size="md" icon={<Icon name="pin" size={14} />}>Directions</Btn>
