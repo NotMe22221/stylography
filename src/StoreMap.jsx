@@ -1,31 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { collection, getDocs, query, where } from 'firebase/firestore';
 import { db } from './firebase.js';
-import { Icon, Btn, Spinner, Wordmark } from './primitives.jsx';
-
-// Leaflet CSS is loaded dynamically to avoid SSR issues
-let leafletLoaded = false;
-
-function loadLeafletCSS() {
-  if (leafletLoaded) return;
-  const link = document.createElement('link');
-  link.rel = 'stylesheet';
-  link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
-  document.head.appendChild(link);
-
-  // Fix marker icon click area
-  const style = document.createElement('style');
-  style.textContent = `
-    .store-marker-icon {
-      background: transparent !important;
-      border: none !important;
-      cursor: pointer !important;
-    }
-  `;
-  document.head.appendChild(style);
-
-  leafletLoaded = true;
-}
+import { Icon, Btn, Spinner } from './primitives.jsx';
 
 // ─── Store Map Screen ─────────────────────────────────────────────────────────
 
@@ -34,23 +10,16 @@ export default function StoreMap({ push, allItems }) {
   const [userPos, setUserPos]       = useState(null);
   const [loading, setLoading]       = useState(true);
   const [selectedStore, setSelected] = useState(null);
-  const [mapReady, setMapReady]     = useState(false);
-  const mapRef                      = useRef(null);
   const mapContainerRef             = useRef(null);
-  const markersRef                  = useRef([]);
-
-  // Load Leaflet CSS
-  useEffect(() => { loadLeafletCSS(); }, []);
+  const mapInstanceRef              = useRef(null);
+  const initRef                     = useRef(false);
 
   // Get user location
   useEffect(() => {
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (pos) => setUserPos({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-        () => {
-          // Default to Minneapolis (Jessica's store area)
-          setUserPos({ lat: 44.9778, lng: -93.2650 });
-        },
+        () => setUserPos({ lat: 44.9778, lng: -93.2650 }),
         { timeout: 5000 }
       );
     } else {
@@ -62,19 +31,39 @@ export default function StoreMap({ push, allItems }) {
   useEffect(() => {
     getDocs(query(collection(db, 'stores'), where('onboarded', '==', true)))
       .then(snap => {
-        const storeList = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-        setStores(storeList);
+        setStores(snap.docs.map(d => ({ id: d.id, ...d.data() })));
         setLoading(false);
       })
       .catch(() => setLoading(false));
   }, []);
 
-  // Initialize map once we have position
+  // Give stores demo positions if they don't have real coordinates
+  const storesWithPos = stores.map((store, i) => {
+    if (store.lat && store.lng) return store;
+    const angle = (i / Math.max(stores.length, 1)) * 2 * Math.PI;
+    const dist = 0.012 + Math.random() * 0.025;
+    return {
+      ...store,
+      lat: (userPos?.lat || 44.9778) + Math.cos(angle) * dist,
+      lng: (userPos?.lng || -93.2650) + Math.sin(angle) * dist,
+    };
+  });
+
+  // Initialize map + markers in one shot
   useEffect(() => {
-    if (!userPos || !mapContainerRef.current || mapReady) return;
+    if (!userPos || !mapContainerRef.current || initRef.current || loading) return;
+    initRef.current = true;
+
+    // Inject Leaflet CSS
+    if (!document.querySelector('link[href*="leaflet"]')) {
+      const link = document.createElement('link');
+      link.rel = 'stylesheet';
+      link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+      document.head.appendChild(link);
+    }
 
     import('leaflet').then((L) => {
-      // Fix default marker icons (Leaflet + bundlers issue)
+      // Fix bundler icon path issue
       delete L.Icon.Default.prototype._getIconUrl;
       L.Icon.Default.mergeOptions({
         iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
@@ -82,88 +71,75 @@ export default function StoreMap({ push, allItems }) {
         shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
       });
 
-      const map = L.map(mapContainerRef.current).setView([userPos.lat, userPos.lng], 13);
+      const map = L.map(mapContainerRef.current, { zoomControl: true })
+        .setView([userPos.lat, userPos.lng], 13);
 
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; OpenStreetMap contributors',
+        attribution: '&copy; OpenStreetMap',
         maxZoom: 19,
       }).addTo(map);
 
-      // User location marker
-      const userIcon = L.divIcon({
-        html: `<div style="width:16px;height:16px;border-radius:50%;background:var(--aubergine-600);border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.3)"></div>`,
-        iconSize: [16, 16],
-        iconAnchor: [8, 8],
-        className: '',
-      });
-      L.marker([userPos.lat, userPos.lng], { icon: userIcon })
-        .addTo(map)
-        .bindPopup('You are here');
+      // User location — small circle marker (no click needed)
+      L.circleMarker([userPos.lat, userPos.lng], {
+        radius: 8, fillColor: '#5B4D7A', fillOpacity: 1,
+        color: '#fff', weight: 3,
+      }).addTo(map).bindPopup('You are here');
 
-      mapRef.current = map;
-      setMapReady(true);
+      // Store markers — use default Leaflet markers (guaranteed clickable)
+      const storeMarkerIcon = new L.Icon({
+        iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-violet.png',
+        shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+        iconSize: [25, 41],
+        iconAnchor: [12, 41],
+        popupAnchor: [1, -34],
+        shadowSize: [41, 41],
+      });
+
+      const bounds = [
+        [userPos.lat, userPos.lng],
+      ];
+
+      storesWithPos.forEach(store => {
+        bounds.push([store.lat, store.lng]);
+
+        const marker = L.marker([store.lat, store.lng], { icon: storeMarkerIcon })
+          .addTo(map);
+
+        // Popup with store name + a "View" link
+        const popupHtml = `
+          <div style="min-width:140px">
+            <div style="font-weight:700;font-size:14px;margin-bottom:4px">${store.emoji || '🏪'} ${store.name || 'Store'}</div>
+            <div style="font-size:12px;color:#666;text-transform:capitalize;margin-bottom:8px">${store.type || 'Vintage'}${store.city ? ' · ' + store.city : ''}</div>
+            <button onclick="window.__selectStore('${store.id}')" style="padding:6px 14px;border-radius:8px;background:#5B4D7A;color:#fff;font-size:12px;font-weight:700;cursor:pointer;border:none">View store</button>
+          </div>
+        `;
+        marker.bindPopup(popupHtml);
+      });
+
+      // Fit all markers in view
+      if (bounds.length > 1) {
+        map.fitBounds(bounds, { padding: [40, 40], maxZoom: 14 });
+      }
+
+      mapInstanceRef.current = map;
     });
 
     return () => {
-      if (mapRef.current) {
-        mapRef.current.remove();
-        mapRef.current = null;
-        setMapReady(false);
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.remove();
+        mapInstanceRef.current = null;
       }
     };
-  }, [userPos]);
+  }, [userPos, loading, storesWithPos.length]);
 
-  // Add store markers
+  // Global handler for popup "View store" button clicks
   useEffect(() => {
-    if (!mapReady || !mapRef.current) return;
-
-    import('leaflet').then((L) => {
-      // Clear old markers
-      markersRef.current.forEach(m => m.remove());
-      markersRef.current = [];
-
-      // For stores without coordinates, generate nearby positions for demo
-      const storesWithPos = stores.map((store, i) => {
-        if (store.lat && store.lng) return store;
-        // Spread stores around user position for demo
-        const angle = (i / Math.max(stores.length, 1)) * 2 * Math.PI;
-        const dist = 0.01 + Math.random() * 0.03;
-        return {
-          ...store,
-          lat: (userPos?.lat || 44.9778) + Math.cos(angle) * dist,
-          lng: (userPos?.lng || -93.2650) + Math.sin(angle) * dist,
-        };
-      });
-
-      const storeIcon = L.divIcon({
-        html: `<div style="width:36px;height:36px;border-radius:50%;background:#5B4D7A;border:3px solid #fff;box-shadow:0 2px 10px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center;font-size:16px;pointer-events:none">🏪</div>`,
-        iconSize: [36, 36],
-        iconAnchor: [18, 18],
-        className: 'store-marker-icon',
-      });
-
-      storesWithPos.forEach(store => {
-        const marker = L.marker([store.lat, store.lng], {
-          icon: storeIcon,
-          interactive: true,
-          bubblingMouseEvents: false,
-        }).addTo(mapRef.current);
-        marker.on('click', () => {
-          setSelected(store);
-        });
-        markersRef.current.push(marker);
-      });
-
-      // Fit bounds if we have stores
-      if (storesWithPos.length > 0 && userPos) {
-        const allPoints = [
-          [userPos.lat, userPos.lng],
-          ...storesWithPos.map(s => [s.lat, s.lng]),
-        ];
-        mapRef.current.fitBounds(allPoints, { padding: [50, 50], maxZoom: 14 });
-      }
-    });
-  }, [mapReady, stores, userPos]);
+    window.__selectStore = (storeId) => {
+      const store = stores.find(s => s.id === storeId);
+      if (store) setSelected(store);
+    };
+    return () => { delete window.__selectStore; };
+  }, [stores]);
 
   // Count items per store
   const itemCountByStore = {};
@@ -179,7 +155,7 @@ export default function StoreMap({ push, allItems }) {
         padding: '56px 20px 14px',
         display: 'flex', alignItems: 'center', gap: 12,
         background: 'var(--surface)', borderBottom: '1px solid var(--line)',
-        zIndex: 10,
+        zIndex: 10, flexShrink: 0,
       }}>
         <button onClick={() => push('feed')} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
           <Icon name="arrow-left" size={20} color="var(--ink-900)" />
@@ -192,8 +168,8 @@ export default function StoreMap({ push, allItems }) {
         </div>
         <button
           onClick={() => {
-            if (mapRef.current && userPos) {
-              mapRef.current.setView([userPos.lat, userPos.lng], 13, { animate: true });
+            if (mapInstanceRef.current && userPos) {
+              mapInstanceRef.current.setView([userPos.lat, userPos.lng], 13, { animate: true });
             }
           }}
           style={{
@@ -207,7 +183,7 @@ export default function StoreMap({ push, allItems }) {
       </div>
 
       {/* Map */}
-      <div style={{ flex: 1, position: 'relative' }}>
+      <div style={{ flex: 1, position: 'relative', minHeight: 0 }}>
         {loading && (
           <div style={{
             position: 'absolute', inset: 0, zIndex: 5,
@@ -220,18 +196,66 @@ export default function StoreMap({ push, allItems }) {
         <div ref={mapContainerRef} style={{ width: '100%', height: '100%' }} />
       </div>
 
-      {/* Selected store card */}
+      {/* Store list below map */}
+      {stores.length > 0 && (
+        <div style={{
+          flexShrink: 0, maxHeight: '35vh', overflowY: 'auto',
+          borderTop: '1px solid var(--line)', background: 'var(--surface)',
+        }}>
+          <div style={{ padding: '12px 16px 6px', fontSize: 12, fontWeight: 700, color: 'var(--ink-500)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+            All stores
+          </div>
+          {storesWithPos.map(store => (
+            <button
+              key={store.id}
+              onClick={() => {
+                setSelected(store);
+                // Pan map to this store
+                if (mapInstanceRef.current) {
+                  mapInstanceRef.current.setView([store.lat, store.lng], 15, { animate: true });
+                }
+              }}
+              style={{
+                width: '100%', padding: '12px 16px', textAlign: 'left', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', gap: 12,
+                borderBottom: '1px solid var(--line)',
+                background: selectedStore?.id === store.id ? 'var(--aubergine-100)' : 'transparent',
+              }}
+            >
+              <div style={{
+                width: 44, height: 44, borderRadius: 10,
+                background: store.color || '#5B4D7A',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 20, flexShrink: 0, overflow: 'hidden',
+              }}>
+                {store.heroImageUrl
+                  ? <img src={store.heroImageUrl} style={{ width: 44, height: 44, objectFit: 'cover' }} alt="" />
+                  : store.emoji || '🏪'}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--ink-900)' }}>{store.name || 'Store'}</div>
+                <div style={{ fontSize: 12, color: 'var(--ink-500)', textTransform: 'capitalize' }}>
+                  {store.type || 'Vintage'}{store.city ? ` · ${store.city}` : ''} · {itemCountByStore[store.id] || 0} items
+                </div>
+              </div>
+              <Icon name="arrow-right" size={14} color="var(--ink-400)" />
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Selected store detail card */}
       {selectedStore && (
         <div style={{
-          position: 'absolute', bottom: 24, left: 16, right: 16, zIndex: 20,
-          padding: 16, borderRadius: 16,
+          position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 20,
+          padding: '16px 16px 32px', borderRadius: '16px 16px 0 0',
           background: 'var(--surface)', border: '1px solid var(--line)',
-          boxShadow: '0 8px 32px rgba(0,0,0,0.15)',
+          boxShadow: '0 -8px 32px rgba(0,0,0,0.15)',
         }}>
           <button
             onClick={() => setSelected(null)}
             style={{
-              position: 'absolute', top: 10, right: 10,
+              position: 'absolute', top: 12, right: 12,
               width: 28, height: 28, borderRadius: '50%',
               background: 'var(--cream-100)', display: 'flex',
               alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
@@ -263,7 +287,7 @@ export default function StoreMap({ push, allItems }) {
                   {selectedStore.bio}
                 </div>
               )}
-              <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+              <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
                 <Btn variant="accent" size="sm" onClick={() => push('store', { store: selectedStore })}>
                   View store
                 </Btn>
@@ -272,7 +296,6 @@ export default function StoreMap({ push, allItems }) {
                   background: 'var(--cream-100)', fontSize: 11, fontWeight: 600,
                   color: 'var(--ink-700)', display: 'flex', alignItems: 'center', gap: 4,
                 }}>
-                  <Icon name="grid" size={11} color="var(--ink-500)" />
                   {itemCountByStore[selectedStore.id] || 0} items
                 </span>
                 {selectedStore.fulfillment?.pickup && (
@@ -281,7 +304,7 @@ export default function StoreMap({ push, allItems }) {
                     background: 'var(--sage-200)', fontSize: 11, fontWeight: 600,
                     color: '#2E3A2E',
                   }}>
-                    Pickup
+                    Pickup available
                   </span>
                 )}
               </div>
