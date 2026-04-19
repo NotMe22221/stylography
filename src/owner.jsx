@@ -84,6 +84,7 @@ export default function StoreOwnerApp({ user }) {
         {screen === 'claims'    && <OwnerClaims claims={claims} items={items} />}
         {screen === 'boards'   && <OwnerBoards store={store} user={user} items={items} />}
         {screen === 'profile'  && <OwnerStoreProfile store={store} items={items} />}
+        {screen === 'settings' && <OwnerSettings store={store} user={user} onLogout={handleLogout} />}
       </div>
       {showGuide && screen === 'dashboard' && (
         <DashboardGuide userId={user?.uid} onDismiss={() => setShowGuide(false)} />
@@ -163,11 +164,21 @@ const OwnerSidebar = ({ screen, setScreen, store, onLogout, pendingClaims }) => 
 const OwnerDashboard = ({ store, items, claims, events, setScreen }) => {
   const DAY = 86400000;
   const now = Date.now();
+  const [rangeDays, setRangeDays] = useState(14);
+  const [showRangeMenu, setShowRangeMenu] = useState(false);
 
-  // Last 14 days of events
+  const RANGE_OPTIONS = [
+    { days: 7, label: 'Last 7 days' },
+    { days: 14, label: 'Last 14 days' },
+    { days: 30, label: 'Last 30 days' },
+    { days: 90, label: 'Last 90 days' },
+  ];
+  const rangeLabel = RANGE_OPTIONS.find(r => r.days === rangeDays)?.label || `Last ${rangeDays} days`;
+
+  // Filter events by selected range
   const recent = events.filter(e => {
     const ts = e.timestamp?.toDate?.();
-    return ts && (now - ts.getTime()) <= 14 * DAY;
+    return ts && (now - ts.getTime()) <= rangeDays * DAY;
   });
 
   const totalViews       = recent.filter(e => e.type === 'item_view').length;
@@ -203,9 +214,9 @@ const OwnerDashboard = ({ store, items, claims, events, setScreen }) => {
     });
   const garmentClaimedData = Object.entries(kindClaimed).sort((a, b) => b[1] - a[1]).slice(0, 6);
 
-  // Daily breakdown for chart (last 14 days, zero-filled)
-  const days = Array.from({ length: 14 }, (_, i) => {
-    const d = new Date(now - (13 - i) * DAY);
+  // Daily breakdown for chart (dynamic range, zero-filled)
+  const days = Array.from({ length: rangeDays }, (_, i) => {
+    const d = new Date(now - (rangeDays - 1 - i) * DAY);
     return d.toISOString().split('T')[0];
   });
   const viewsByDay = {}, savesByDay = {};
@@ -219,7 +230,8 @@ const OwnerDashboard = ({ store, items, claims, events, setScreen }) => {
   const viewsData = days.map(d => viewsByDay[d] || 0);
   const savesData = days.map(d => savesByDay[d] || 0);
   const dayLabels = days.map((d, i) => {
-    if (i === 0 || i === 7 || i === 13) {
+    const step = Math.max(1, Math.floor(rangeDays / 5));
+    if (i === 0 || i === days.length - 1 || i % step === 0) {
       const date = new Date(d + 'T12:00:00');
       return `${date.toLocaleString('default', { month: 'short' })} ${date.getDate()}`;
     }
@@ -258,11 +270,37 @@ const OwnerDashboard = ({ store, items, claims, events, setScreen }) => {
         <div>
           <div style={{ fontSize: 13, color: 'var(--ink-500)' }}>Good morning, {ownerFirstName}</div>
           <h1 className="display" style={{ fontSize: 38, lineHeight: 1, margin: '4px 0 0', fontWeight: 500 }}>
-            Dashboard <span style={{ color: 'var(--ink-400)', fontSize: 22 }}>· last 14 days</span>
+            Dashboard <span style={{ color: 'var(--ink-400)', fontSize: 22 }}>· {rangeLabel.toLowerCase()}</span>
           </h1>
         </div>
         <div style={{ display: 'flex', gap: 10 }}>
-          <Btn variant="soft" size="md" icon={<Icon name="calendar" size={14} />}>Last 14 days</Btn>
+          <div style={{ position: 'relative' }}>
+            <Btn variant="soft" size="md" icon={<Icon name="calendar" size={14} />} onClick={() => setShowRangeMenu(v => !v)}>{rangeLabel}</Btn>
+            {showRangeMenu && (
+              <div style={{
+                position: 'absolute', top: '100%', right: 0, marginTop: 6, zIndex: 30,
+                background: 'var(--surface)', border: '1px solid var(--line)',
+                borderRadius: 'var(--r-md)', boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+                minWidth: 160, overflow: 'hidden',
+              }}>
+                {RANGE_OPTIONS.map(opt => (
+                  <button
+                    key={opt.days}
+                    onClick={() => { setRangeDays(opt.days); setShowRangeMenu(false); }}
+                    style={{
+                      width: '100%', padding: '10px 16px', textAlign: 'left', cursor: 'pointer',
+                      fontSize: 13, fontWeight: rangeDays === opt.days ? 700 : 500,
+                      color: rangeDays === opt.days ? 'var(--aubergine-600)' : 'var(--ink-700)',
+                      background: rangeDays === opt.days ? 'var(--aubergine-100)' : 'transparent',
+                      borderBottom: '1px solid var(--line)',
+                    }}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           <div data-guide="upload-btn" style={{ display: 'inline-flex' }}>
           <Btn variant="accent" size="md" onClick={() => setScreen('upload')} icon={<Icon name="plus" size={14} color="#fff" />}>Upload items</Btn>
           </div>
@@ -271,8 +309,8 @@ const OwnerDashboard = ({ store, items, claims, events, setScreen }) => {
 
       {/* KPIs */}
       <div data-guide="kpis" style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 14, marginBottom: 24 }}>
-        <DashKpi label="Item views"    value={totalViews.toLocaleString()}  delta={hasData ? 'last 14 days' : 'No data yet'} color="var(--aubergine-600)" neutral={!hasData} />
-        <DashKpi label="Items saved"   value={totalSaves.toLocaleString()}  delta={hasData ? 'last 14 days' : '—'} color="var(--blush-500)" neutral={!hasData} />
+        <DashKpi label="Item views"    value={totalViews.toLocaleString()}  delta={hasData ? rangeLabel.toLowerCase() : 'No data yet'} color="var(--aubergine-600)" neutral={!hasData} />
+        <DashKpi label="Items saved"   value={totalSaves.toLocaleString()}  delta={hasData ? rangeLabel.toLowerCase() : '—'} color="var(--blush-500)" neutral={!hasData} />
         <DashKpi label="Store visits"  value={totalStoreVisits.toLocaleString()} delta={hasData ? 'profile views' : '—'} color="var(--sage-500)" neutral={!hasData} />
         <DashKpi label="Active claims" value={String(activeClaims)} delta={`${claims.filter(c => c.status === 'pending').length} pending`} color="var(--clay-500)" neutral />
         <DashKpi label="Total revenue" value={totalRevenue > 0 ? `$${totalRevenue.toFixed(0)}` : '—'} delta={totalRevenue > 0 ? 'paid + completed' : 'No sales yet'} color="var(--sage-500)" neutral={totalRevenue === 0} />
@@ -1359,6 +1397,137 @@ const OwnerStoreProfile = ({ store, items }) => {
     </div>
   );
 };
+
+// ─── Settings ─────────────────────────────────────────────────────────────────
+
+const OwnerSettings = ({ store, user, onLogout }) => {
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [notifs, setNotifs] = useState({
+    claimAlerts: store?.notifications?.claimAlerts !== false,
+    weeklyDigest: store?.notifications?.weeklyDigest !== false,
+    marketingTips: store?.notifications?.marketingTips !== false,
+  });
+
+  const saveNotifs = async () => {
+    setSaving(true);
+    try {
+      await updateDoc(doc(db, 'stores', user.uid), {
+        notifications: notifs,
+        updatedAt: serverTimestamp(),
+      });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const resetGuideTour = async () => {
+    try {
+      await updateDoc(doc(db, 'stores', user.uid), {
+        guideTourCompleted: false,
+      });
+      alert('Dashboard guide will show on your next visit!');
+    } catch {}
+  };
+
+  return (
+    <div style={{ padding: '28px 32px 48px', maxWidth: 640 }}>
+      <h1 className="display" style={{ fontSize: 34, lineHeight: 1, margin: '0 0 6px', fontWeight: 500 }}>Settings</h1>
+      <div style={{ fontSize: 13, color: 'var(--ink-500)', marginBottom: 28 }}>Manage your account and preferences</div>
+
+      {/* Account */}
+      <SettingsSection title="Account">
+        <SettingsRow label="Email" value={user?.email || '—'} />
+        <SettingsRow label="Store" value={store?.name || '—'} />
+        <SettingsRow label="Store ID" value={user?.uid?.slice(0, 12) + '…' || '—'} mono />
+        <SettingsRow label="Member since" value={store?.createdAt?.toDate?.()
+          ? store.createdAt.toDate().toLocaleDateString('en', { month: 'long', year: 'numeric' })
+          : '—'} />
+      </SettingsSection>
+
+      {/* Notifications */}
+      <SettingsSection title="Notifications">
+        <SettingsToggle label="Claim alerts" hint="Get notified when a shopper reserves an item" checked={notifs.claimAlerts} onChange={v => setNotifs(n => ({ ...n, claimAlerts: v }))} />
+        <SettingsToggle label="Weekly digest" hint="Summary of views, saves, and trends" checked={notifs.weeklyDigest} onChange={v => setNotifs(n => ({ ...n, weeklyDigest: v }))} />
+        <SettingsToggle label="Tips & insights" hint="Occasional tips to help you sell more" checked={notifs.marketingTips} onChange={v => setNotifs(n => ({ ...n, marketingTips: v }))} />
+        <div style={{ marginTop: 12 }}>
+          <Btn variant="accent" size="md" disabled={saving} onClick={saveNotifs}
+            icon={saved ? <Icon name="check-circle" size={14} color="#fff" /> : null}>
+            {saving ? 'Saving…' : saved ? 'Saved!' : 'Save preferences'}
+          </Btn>
+        </div>
+      </SettingsSection>
+
+      {/* Store */}
+      <SettingsSection title="Store">
+        <SettingsRow label="Store type" value={store?.type || '—'} capitalize />
+        <SettingsRow label="Fulfillment" value={
+          [store?.fulfillment?.pickup && 'Pickup', store?.fulfillment?.localDelivery && 'Delivery', store?.fulfillment?.shipping && 'Shipping']
+            .filter(Boolean).join(', ') || '—'
+        } />
+        <div style={{ marginTop: 12 }}>
+          <button onClick={resetGuideTour} style={{ fontSize: 13, color: 'var(--aubergine-600)', fontWeight: 600, cursor: 'pointer', background: 'none', padding: 0 }}>
+            Replay dashboard guide tour
+          </button>
+        </div>
+      </SettingsSection>
+
+      {/* Danger zone */}
+      <SettingsSection title="Account actions">
+        <div style={{ display: 'flex', gap: 10 }}>
+          <Btn variant="soft" size="md" onClick={onLogout} icon={<Icon name="logout" size={14} />}>Sign out</Btn>
+        </div>
+        <div style={{ marginTop: 16, padding: 14, borderRadius: 8, background: '#FEE2E2', border: '1px solid #FECACA', fontSize: 12, color: '#B91C1C', lineHeight: 1.5 }}>
+          <strong>Delete account:</strong> Contact support to permanently delete your store and all associated data.
+        </div>
+      </SettingsSection>
+    </div>
+  );
+};
+
+const SettingsSection = ({ title, children }) => (
+  <div style={{ marginBottom: 28 }}>
+    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink-500)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 12 }}>{title}</div>
+    <div style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 'var(--r-md)', padding: 16 }}>
+      {children}
+    </div>
+  </div>
+);
+
+const SettingsRow = ({ label, value, mono, capitalize }) => (
+  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid var(--line)' }}>
+    <span style={{ fontSize: 13, color: 'var(--ink-500)' }}>{label}</span>
+    <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink-900)', fontFamily: mono ? 'monospace' : 'inherit', textTransform: capitalize ? 'capitalize' : 'none' }}>{value}</span>
+  </div>
+);
+
+const SettingsToggle = ({ label, hint, checked, onChange }) => (
+  <label style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '10px 0', borderBottom: '1px solid var(--line)', cursor: 'pointer' }}>
+    <div style={{ flex: 1 }}>
+      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink-900)' }}>{label}</div>
+      {hint && <div style={{ fontSize: 12, color: 'var(--ink-500)', marginTop: 2 }}>{hint}</div>}
+    </div>
+    <div
+      onClick={() => onChange(!checked)}
+      style={{
+        width: 40, height: 22, borderRadius: 11, padding: 2,
+        background: checked ? 'var(--aubergine-600)' : 'var(--cream-200)',
+        transition: 'background 0.2s', cursor: 'pointer', flexShrink: 0,
+      }}
+    >
+      <div style={{
+        width: 18, height: 18, borderRadius: '50%', background: '#fff',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+        transform: checked ? 'translateX(18px)' : 'translateX(0)',
+        transition: 'transform 0.2s',
+      }} />
+    </div>
+  </label>
+);
 
 // ─── Shared helpers ───────────────────────────────────────────────────────────
 
