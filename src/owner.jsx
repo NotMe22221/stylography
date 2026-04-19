@@ -1016,7 +1016,28 @@ export function OwnerUpload({ store, user, onDone }) {
 // ─── Inventory ────────────────────────────────────────────────────────────────
 
 const OwnerInventory = ({ items }) => {
+  const [deletingId, setDeletingId] = useState(null);
   const displayItems = items.length > 0 ? items : ITEMS.slice(0, 10);
+
+  const deleteInventoryItem = async (item) => {
+    // Demo seed items (i1, i2, ...) are static and not stored in Firestore.
+    if (!item?.id || /^i\d+$/.test(item.id)) return;
+    const ok = window.confirm(`Delete "${item.name}" from inventory?`);
+    if (!ok) return;
+    setDeletingId(item.id);
+    try {
+      await updateDoc(doc(db, 'items', item.id), {
+        status: 'deleted',
+        updatedAt: serverTimestamp(),
+      });
+    } catch (err) {
+      console.error('Failed to delete inventory item:', err.message);
+      alert('Could not delete item. Please try again.');
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   return (
     <div style={{ padding: '28px 32px 48px', maxWidth: 1200 }}>
       <h1 className="display" style={{ fontSize: 34, lineHeight: 1, margin: 0, fontWeight: 500 }}>Inventory</h1>
@@ -1037,6 +1058,28 @@ const OwnerInventory = ({ items }) => {
               <span style={{ fontWeight: 600 }}>${item.price}</span>
               <span style={{ fontSize: 11, color: 'var(--ink-500)' }}>{item.views || 0} views</span>
             </div>
+            {!/^i\d+$/.test(item.id) && (
+              <button
+                type="button"
+                onClick={() => deleteInventoryItem(item)}
+                disabled={deletingId === item.id}
+                style={{
+                  marginTop: 10,
+                  width: '100%',
+                  padding: '8px 10px',
+                  borderRadius: 8,
+                  border: '1px solid #F2C9D1',
+                  background: '#FFF5F7',
+                  color: '#B54A6A',
+                  fontSize: 12,
+                  fontWeight: 700,
+                  cursor: deletingId === item.id ? 'wait' : 'pointer',
+                  opacity: deletingId === item.id ? 0.7 : 1,
+                }}
+              >
+                {deletingId === item.id ? 'Deleting…' : 'Delete item'}
+              </button>
+            )}
           </div>
         ))}
       </div>
