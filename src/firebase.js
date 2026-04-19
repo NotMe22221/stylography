@@ -28,3 +28,4 @@ if (import.meta.env.DEV && import.meta.env.VITE_USE_EMULATOR === 'true') {
 // Callable wrapper — returns number[] embedding of length 1408
 export const embedContent          = httpsCallable(functions, 'embedContent');
 export const createCheckoutSession = httpsCallable(functions, 'createCheckoutSession');
+export const finalizeCheckoutSession = httpsCallable(functions, 'finalizeCheckoutSession');

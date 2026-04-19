@@ -51,7 +51,13 @@ export default function StoreOwnerApp({ user }) {
     if (!user) return;
     const q = query(collection(db, 'claims'), where('storeId', '==', user.uid));
     return onSnapshot(q, snap => {
-      setClaims(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      const nextClaims = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      nextClaims.sort((a, b) => {
+        const aTs = a?.createdAt?.toMillis?.() || a?.updatedAt?.toMillis?.() || 0;
+        const bTs = b?.createdAt?.toMillis?.() || b?.updatedAt?.toMillis?.() || 0;
+        return bTs - aTs;
+      });
+      setClaims(nextClaims);
     });
   }, [user]);
 

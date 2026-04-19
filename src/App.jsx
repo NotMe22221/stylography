@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
-import { auth, db } from './firebase.js';
+import { auth, db, finalizeCheckoutSession } from './firebase.js';
 import { Spinner, Wordmark, Btn } from './primitives.jsx';
 import { GarmentSVG } from './garments.jsx';
 import StoreAuth from './store/StoreAuth.jsx';
@@ -28,13 +28,23 @@ export default function App() {
 
   // Detect Stripe checkout return
   useEffect(() => {
-    const params    = new URLSearchParams(window.location.search);
+    const params = new URLSearchParams(window.location.search);
     const sessionId = params.get('session_id');
-    const claimId   = params.get('claim_id');
-    if (sessionId && claimId) {
-      setStripeSuccess({ sessionId, claimId });
-      window.history.replaceState({}, '', window.location.pathname);
-    }
+    const claimId = params.get('claim_id');
+    if (!sessionId || !claimId) return;
+
+    (async () => {
+      try {
+        // Fallback finalization path for environments where webhook isn't configured.
+        await finalizeCheckoutSession({ sessionId, claimId });
+      } catch (err) {
+        // Non-fatal: webhook may still process the update asynchronously.
+        console.warn('Checkout finalization fallback failed:', err?.message || err);
+      } finally {
+        setStripeSuccess({ sessionId, claimId });
+        window.history.replaceState({}, '', window.location.pathname);
+      }
+    })();
   }, []);
 
   useEffect(() => {

@@ -117,13 +117,28 @@ exports.createCheckoutSession = onCall(
     const stripe = Stripe(STRIPE_SECRET.value());
 
     try {
+      const db = admin.firestore();
+      let resolvedStoreId = storeId || "";
+      let resolvedItemName = itemName || "";
+
+      // Prefer canonical item data from Firestore to avoid mismatched store IDs.
+      const itemSnap = await db.collection("items").doc(itemId).get();
+      if (itemSnap.exists) {
+        const itemData = itemSnap.data() || {};
+        resolvedStoreId = itemData.storeId || itemData.store || resolvedStoreId;
+        resolvedItemName = itemData.name || resolvedItemName;
+      }
+      if (!resolvedStoreId) {
+        throw new HttpsError("invalid-argument", "Missing storeId for checkout item");
+      }
+
       // Create a pending claim doc first so we have the ID for metadata
       const { buyerHandle, itemKind } = request.data;
-      const claimRef = admin.firestore().collection("claims").doc();
+      const claimRef = db.collection("claims").doc();
       await claimRef.set({
         itemId,
-        storeId,
-        itemName:    itemName || "",
+        storeId:     resolvedStoreId,
+        itemName:    resolvedItemName || "",
         itemKind:    itemKind || "",
         shopperId:   userId || request.auth?.uid || "anonymous",
         buyerId:     userId || request.auth?.uid || "anonymous",
@@ -141,8 +156,8 @@ exports.createCheckoutSession = onCall(
             price_data: {
               currency: "usd",
               product_data: {
-                name: itemName || "Thrift item",
-                metadata: { itemId, storeId },
+                name: resolvedItemName || "Thrift item",
+                metadata: { itemId, storeId: resolvedStoreId },
               },
               unit_amount: Math.round(price * 100), // cents
             },
@@ -152,13 +167,93 @@ exports.createCheckoutSession = onCall(
         mode: "payment",
         success_url: `${successUrl}?session_id={CHECKOUT_SESSION_ID}&claim_id=${claimRef.id}`,
         cancel_url: cancelUrl,
-        metadata: { itemId, storeId, claimId: claimRef.id, userId: userId || "" },
+        metadata: { itemId, storeId: resolvedStoreId, claimId: claimRef.id, userId: userId || "" },
       });
 
       return { url: session.url, claimId: claimRef.id };
     } catch (err) {
       throw new HttpsError("internal", err.message);
     }
+  }
+);
+
+/**
+ * Demo-safe fallback for environments without webhook setup.
+ * Verifies Stripe session is paid, then applies the same DB updates as webhook.
+ */
+exports.finalizeCheckoutSession = onCall(
+  {
+    region: LOCATION,
+    timeoutSeconds: 30,
+    secrets: [STRIPE_SECRET],
+    cors: [
+      "https://stylography.vercel.app",
+      "http://localhost:5173",
+      "http://localhost:3000",
+    ],
+    invoker: "public",
+  },
+  async (request) => {
+    const { sessionId, claimId } = request.data || {};
+    if (!sessionId || !claimId) {
+      throw new HttpsError("invalid-argument", "Missing sessionId or claimId");
+    }
+
+    const Stripe = require("stripe");
+    const stripe = Stripe(STRIPE_SECRET.value());
+    const session = await stripe.checkout.sessions.retrieve(sessionId);
+    if (session.payment_status !== "paid") {
+      throw new HttpsError("failed-precondition", "Checkout session is not paid");
+    }
+
+    const md = session.metadata || {};
+    if (md.claimId && md.claimId !== claimId) {
+      throw new HttpsError("permission-denied", "Claim/session mismatch");
+    }
+
+    const db = admin.firestore();
+    const claimRef = db.collection("claims").doc(claimId);
+    const claimSnap = await claimRef.get();
+    if (!claimSnap.exists) {
+      throw new HttpsError("not-found", "Claim not found");
+    }
+
+    const claim = claimSnap.data() || {};
+    const alreadyPaid = claim.status === "paid" || claim.status === "completed";
+    if (alreadyPaid) {
+      return { ok: true, status: claim.status, alreadyApplied: true };
+    }
+
+    const itemId = md.itemId || claim.itemId || null;
+    const storeId = md.storeId || claim.storeId || null;
+    const amount = (session.amount_total || 0) / 100;
+
+    const batch = db.batch();
+    batch.update(claimRef, {
+      status: "paid",
+      stripeSessionId: session.id,
+      paidAt: admin.firestore.FieldValue.serverTimestamp(),
+      amount: amount || claim.amount || 0,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    if (itemId) {
+      batch.update(db.collection("items").doc(itemId), {
+        status: "sold",
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    }
+    if (storeId && amount > 0) {
+      batch.set(
+        db.collection("stores").doc(storeId),
+        {
+          balance: admin.firestore.FieldValue.increment(amount),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+    }
+    await batch.commit();
+    return { ok: true, status: "paid", alreadyApplied: false };
   }
 );
 
