@@ -5,6 +5,7 @@ import { Wordmark, Btn, Chip, Icon, Avatar } from './primitives.jsx';
 import { GarmentSVG } from './garments.jsx';
 import { OUTFITS, ITEMS, STYLE_CLUSTERS, byId, storeById } from './data.jsx';
 import { trackEvent } from './events.js';
+import StoreMap from './StoreMap.jsx';
 
 // ─── Main shell ───────────────────────────────────────────────────────────────
 
@@ -159,6 +160,7 @@ export default function ShopperApp({ user, initialScreen = 'welcome', onExit, st
       case 'shop-pin':      return <ShopPin {...sharedProps} />;
       case 'item':          return <ItemDetail {...sharedProps} />;
       case 'store':         return <StoreProfile {...sharedProps} />;
+      case 'store-map':     return <StoreMap {...sharedProps} />;
       case 'saved':         return <Saved {...sharedProps} />;
       default:              return <Welcome {...sharedProps} />;
     }
@@ -1723,7 +1725,7 @@ export const TopBar = ({ title, push }) => (
     {title ? <h1 className="display" style={{ fontSize: 26, fontWeight: 500, margin: 0 }}>{title}</h1> : <Wordmark size={20} />}
     <div style={{ display: 'flex', gap: 10 }}>
       <IconBtn icon="search" onClick={() => push?.('shop-pin')} />
-      <IconBtn icon="map" />
+      <IconBtn icon="map" onClick={() => push?.('store-map')} />
     </div>
   </div>
 );
