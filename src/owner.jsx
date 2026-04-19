@@ -1019,6 +1019,20 @@ const OwnerInventory = ({ items }) => {
   const [deletingId, setDeletingId] = useState(null);
   const displayItems = items.length > 0 ? items : ITEMS.slice(0, 10);
 
+  const statusUi = (status) => {
+    const s = (status || 'active').toLowerCase();
+    if (s === 'sold') {
+      return { label: 'Sold', bg: '#E8F3E8', color: '#2E6B3A' };
+    }
+    if (s === 'reserved') {
+      return { label: 'Reserved', bg: '#FFF3DF', color: '#9A5D00' };
+    }
+    if (s === 'confirmed') {
+      return { label: 'Confirmed', bg: '#E9EDFF', color: '#3F4C9B' };
+    }
+    return { label: 'Active', bg: 'var(--cream-100)', color: 'var(--ink-600)' };
+  };
+
   const deleteInventoryItem = async (item) => {
     // Demo seed items (i1, i2, ...) are static and not stored in Firestore.
     if (!item?.id || /^i\d+$/.test(item.id)) return;
@@ -1042,15 +1056,18 @@ const OwnerInventory = ({ items }) => {
     <div style={{ padding: '28px 32px 48px', maxWidth: 1200 }}>
       <h1 className="display" style={{ fontSize: 34, lineHeight: 1, margin: 0, fontWeight: 500 }}>Inventory</h1>
       <div style={{ fontSize: 13, color: 'var(--ink-500)', marginTop: 6, marginBottom: 24 }}>
-        All active items · {displayItems.length} pieces
+        All inventory items · {displayItems.length} pieces
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 14 }}>
         {displayItems.map(item => (
-          <div key={item.id} style={{ padding: 10, borderRadius: 'var(--r-md)', background: 'var(--surface)', border: '1px solid var(--line)' }}>
+          <div key={item.id} style={{ padding: 10, borderRadius: 'var(--r-md)', background: 'var(--surface)', border: '1px solid var(--line)', opacity: item.status === 'sold' ? 0.78 : 1 }}>
             <div style={{ aspectRatio: '3/4', borderRadius: 8, background: item.bg || '#EDE8F5', position: 'relative', overflow: 'hidden', marginBottom: 8 }}>
               {item.imageUrl
                 ? <img src={item.imageUrl} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="" />
                 : <div style={{ position: 'absolute', inset: '10% 18%' }}><GarmentSVG kind={item.kind} color={item.color} accent={item.accent} /></div>}
+              <div style={{ position: 'absolute', top: 8, left: 8, padding: '4px 8px', borderRadius: 999, background: statusUi(item.status).bg, color: statusUi(item.status).color, fontSize: 10, fontWeight: 700, letterSpacing: '0.02em' }}>
+                {statusUi(item.status).label}
+              </div>
             </div>
             <div style={{ fontSize: 13, fontWeight: 600, lineHeight: 1.2 }}>{item.name}</div>
             <div style={{ fontSize: 11, color: 'var(--ink-500)', marginTop: 2 }}>{item.aiTags?.era || item.era} · Size {item.size}</div>
