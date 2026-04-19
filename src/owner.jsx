@@ -8,6 +8,7 @@ import { indexItem } from './vectorSearch.js';
 import { Wordmark, Btn, Icon, Dot, Field, Spinner, inputStyle } from './primitives.jsx';
 import { GarmentSVG } from './garments.jsx';
 import { ITEMS } from './data.jsx'; // fallback for demo data
+import DashboardGuide from './DashboardGuide.jsx';
 
 // ─── Main shell ───────────────────────────────────────────────────────────────
 
@@ -18,12 +19,20 @@ export default function StoreOwnerApp({ user }) {
   const [claims, setClaims] = useState([]);
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [showGuide, setShowGuide] = useState(false);
 
   // Load store profile
   useEffect(() => {
     if (!user) return;
     getDoc(doc(db, 'stores', user.uid)).then(snap => {
-      if (snap.exists()) setStore({ id: snap.id, ...snap.data() });
+      if (snap.exists()) {
+        const data = snap.data();
+        setStore({ id: snap.id, ...data });
+        // Show guide tour on first dashboard visit
+        if (!data.guideTourCompleted) {
+          setShowGuide(true);
+        }
+      }
       setLoading(false);
     });
   }, [user]);
@@ -78,6 +87,9 @@ export default function StoreOwnerApp({ user }) {
         {screen === 'boards'   && <OwnerBoards store={store} user={user} items={items} />}
         {screen === 'profile'  && <OwnerStoreProfile store={store} items={items} />}
       </div>
+      {showGuide && screen === 'dashboard' && (
+        <DashboardGuide userId={user?.uid} onDismiss={() => setShowGuide(false)} />
+      )}
     </div>
   );
 }
@@ -95,7 +107,7 @@ const OwnerSidebar = ({ screen, setScreen, store, onLogout, pendingClaims }) => 
     { id: 'settings',  label: 'Settings',     icon: 'user' },
   ];
   return (
-    <div style={{ width: 232, borderRight: '1px solid var(--line)', padding: '24px 16px', display: 'flex', flexDirection: 'column', background: 'var(--cream-50)', flexShrink: 0 }}>
+    <div style={{ width: 232, borderRight: '1px solid var(--line)', padding: '24px 16px', display: 'flex', flexDirection: 'column', background: 'var(--cream-50)', flexShrink: 0 }} data-guide="sidebar">
       <div style={{ padding: '0 8px 20px' }}><Wordmark size={18} /></div>
 
       {/* Store chip */}
@@ -253,12 +265,14 @@ const OwnerDashboard = ({ store, items, claims, events, setScreen }) => {
         </div>
         <div style={{ display: 'flex', gap: 10 }}>
           <Btn variant="soft" size="md" icon={<Icon name="calendar" size={14} />}>Last 14 days</Btn>
+          <div data-guide="upload-btn" style={{ display: 'inline-flex' }}>
           <Btn variant="accent" size="md" onClick={() => setScreen('upload')} icon={<Icon name="plus" size={14} color="#fff" />}>Upload items</Btn>
+          </div>
         </div>
       </div>
 
       {/* KPIs */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 14, marginBottom: 24 }}>
+      <div data-guide="kpis" style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 14, marginBottom: 24 }}>
         <DashKpi label="Item views"    value={totalViews.toLocaleString()}  delta={hasData ? 'last 14 days' : 'No data yet'} color="var(--aubergine-600)" neutral={!hasData} />
         <DashKpi label="Items saved"   value={totalSaves.toLocaleString()}  delta={hasData ? 'last 14 days' : '—'} color="var(--blush-500)" neutral={!hasData} />
         <DashKpi label="Store visits"  value={totalStoreVisits.toLocaleString()} delta={hasData ? 'profile views' : '—'} color="var(--sage-500)" neutral={!hasData} />
@@ -269,19 +283,25 @@ const OwnerDashboard = ({ store, items, claims, events, setScreen }) => {
 
       {/* Charts row 1 */}
       <div style={{ display: 'grid', gridTemplateColumns: '1.6fr 1fr', gap: 14, marginBottom: 14 }}>
+        <div data-guide="attention-chart">
         <DashCard title="Shopper attention" subtitle="Item views + saves per day">
           <AttentionChart viewsData={viewsData} savesData={savesData} dayLabels={dayLabels} hasData={hasData} />
         </DashCard>
+        </div>
+        <div data-guide="style-demand">
         <DashCard title="Style cluster demand" subtitle="What shoppers engage with most">
           <StyleDemand styleData={styleData} hasData={hasData} />
         </DashCard>
+        </div>
       </div>
 
       {/* Charts row 2 */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
+        <div data-guide="top-saved">
         <DashCard title="Top saved items" subtitle="Strongest purchase intent signal">
           <TopSaved items={items} savesPerItem={savesPerItem} viewsPerItem={viewsPerItem} />
         </DashCard>
+        </div>
         <DashCard title="Dead inventory" subtitle="No views in 14+ days — restyle or reprice" action="Export">
           <DeadInventory items={items} viewsPerItem={viewsPerItem} />
         </DashCard>
@@ -292,9 +312,11 @@ const OwnerDashboard = ({ store, items, claims, events, setScreen }) => {
         <DashCard title="Size demand" subtitle="Most-viewed sizes from shoppers">
           <SizeDemand topSizes={topSizes} hasData={hasData} />
         </DashCard>
+        <div data-guide="recent-claims">
         <DashCard title="Recent claims" subtitle="Respond within 2 hours for best experience">
           <RecentClaims claims={claims} items={items} />
         </DashCard>
+        </div>
       </div>
 
       {/* Garment pickup breakdown */}
