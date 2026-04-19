@@ -49,15 +49,14 @@ export async function textToSpeech(text, options = {}) {
 }
 
 /**
- * Play a text string as speech. Returns a controller to stop playback.
+ * Play an MP3 blob (e.g. from {@link textToSpeech}). Used when you need to
+ * cancel after fetch — wait for blob, check a guard, then play.
  *
- * @param {string} text
- * @param {object} [options]
- * @returns {Promise<{ audio: HTMLAudioElement, stop: () => void, finished: Promise<void> }>}
+ * @param {Blob} blob
+ * @returns {{ audio: HTMLAudioElement, stop: () => void, finished: Promise<void> }}
  */
-export async function speak(text, options = {}) {
-  const blob = await textToSpeech(text, options);
-  const url  = URL.createObjectURL(blob);
+export function playAudioBlob(blob) {
+  const url = URL.createObjectURL(blob);
   const audio = new Audio(url);
 
   const cleanup = () => {
@@ -68,15 +67,26 @@ export async function speak(text, options = {}) {
 
   audio.addEventListener('ended', () => URL.revokeObjectURL(url), { once: true });
 
-  await audio.play();
-
   return {
     audio,
     stop: cleanup,
-    /** Returns a promise that resolves when playback finishes */
     finished: new Promise((resolve) => {
       audio.addEventListener('ended', resolve, { once: true });
       audio.addEventListener('error', resolve, { once: true });
     }),
   };
+}
+
+/**
+ * Play a text string as speech. Returns a controller to stop playback.
+ *
+ * @param {string} text
+ * @param {object} [options]
+ * @returns {Promise<{ audio: HTMLAudioElement, stop: () => void, finished: Promise<void> }>}
+ */
+export async function speak(text, options = {}) {
+  const blob = await textToSpeech(text, options);
+  const playback = playAudioBlob(blob);
+  await playback.audio.play();
+  return playback;
 }

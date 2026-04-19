@@ -20,6 +20,8 @@ export default function StoreOwnerApp({ user }) {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showGuide, setShowGuide] = useState(false);
+  /** Increment when reopening the tour so DashboardGuide remounts (fresh mode picker + steps) */
+  const [guideSession, setGuideSession] = useState(0);
 
   // Load store profile
   useEffect(() => {
@@ -28,8 +30,8 @@ export default function StoreOwnerApp({ user }) {
       if (snap.exists()) {
         const data = snap.data();
         setStore({ id: snap.id, ...data });
-        // DEV: Always show guide on load for testing. Change back to (!data.guideTourCompleted) for production.
-        setShowGuide(true);
+        // First-time / never completed: show the walkthrough once automatically
+        setShowGuide(data.guideTourCompleted !== true);
       }
       setLoading(false);
     });
@@ -84,10 +86,64 @@ export default function StoreOwnerApp({ user }) {
         {screen === 'claims'    && <OwnerClaims claims={claims} items={items} />}
         {screen === 'boards'   && <OwnerBoards store={store} user={user} items={items} />}
         {screen === 'profile'  && <OwnerStoreProfile store={store} items={items} />}
-        {screen === 'settings' && <OwnerSettings store={store} user={user} onLogout={handleLogout} />}
+        {screen === 'settings' && (
+          <OwnerSettings
+            store={store}
+            user={user}
+            onLogout={handleLogout}
+            onGuideTourReset={() => setStore((prev) => (prev ? { ...prev, guideTourCompleted: false } : null))}
+          />
+        )}
       </div>
       {showGuide && screen === 'dashboard' && (
-        <DashboardGuide userId={user?.uid} onDismiss={() => setShowGuide(false)} />
+        <DashboardGuide
+          key={`guide-${user?.uid}-${guideSession}`}
+          userId={user?.uid}
+          onDismiss={() => {
+            setShowGuide(false);
+            setStore((prev) => (prev ? { ...prev, guideTourCompleted: true } : null));
+          }}
+        />
+      )}
+
+      {store && !showGuide && (
+        <button
+          type="button"
+          title="Replay dashboard tour"
+          aria-label="Replay dashboard tour"
+          onClick={() => {
+            setGuideSession((s) => s + 1);
+            setShowGuide(true);
+            setScreen('dashboard');
+          }}
+          style={{
+            position: 'fixed',
+            zIndex: 50,
+            right: 24,
+            bottom: 24,
+            width: 48,
+            height: 48,
+            borderRadius: '50%',
+            border: '1px solid var(--line)',
+            background: 'var(--surface)',
+            boxShadow: '0 4px 20px rgba(31,24,32,0.12), 0 0 0 1px rgba(91,77,122,0.08)',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            transition: 'transform 0.15s ease, box-shadow 0.15s ease',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.transform = 'scale(1.06)';
+            e.currentTarget.style.boxShadow = '0 6px 24px rgba(91,77,122,0.2)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.transform = 'scale(1)';
+            e.currentTarget.style.boxShadow = '0 4px 20px rgba(31,24,32,0.12), 0 0 0 1px rgba(91,77,122,0.08)';
+          }}
+        >
+          <Icon name="sparkle" size={22} color="var(--aubergine-600)" />
+        </button>
       )}
     </div>
   );
@@ -1400,7 +1456,7 @@ const OwnerStoreProfile = ({ store, items }) => {
 
 // ─── Settings ─────────────────────────────────────────────────────────────────
 
-const OwnerSettings = ({ store, user, onLogout }) => {
+const OwnerSettings = ({ store, user, onLogout, onGuideTourReset }) => {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [notifs, setNotifs] = useState({
@@ -1430,7 +1486,8 @@ const OwnerSettings = ({ store, user, onLogout }) => {
       await updateDoc(doc(db, 'stores', user.uid), {
         guideTourCompleted: false,
       });
-      alert('Dashboard guide will show on your next visit!');
+      onGuideTourReset?.();
+      alert('The guide will appear again next time you open the dashboard — or tap the sparkle button anytime.');
     } catch {}
   };
 

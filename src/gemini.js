@@ -292,6 +292,24 @@ Include 3-5 key pieces. Return ONLY valid JSON, no markdown.`;
 }
 
 /**
+ * Stitchy's conversational reply during the owner dashboard tour (voice or typed question).
+ */
+export async function generateTourGuideReply({ stepTitle, stepSpeech, userMessage }) {
+  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+  const prompt = `You are Stitchy, a warm, slightly witty sewing-spool mascot guiding a vintage or resale store owner through their Stylography seller dashboard.
+
+Current tour step title: "${stepTitle}"
+What you're explaining on this step: ${stepSpeech}
+
+The store owner just said: """${userMessage}"""
+
+Reply in 2-4 short sentences, plain text, no markdown or bullet lists. Stay in character. If they ask how something works here, explain briefly. If they're confused or joking, respond naturally. End by reminding them they can tap Next when they're ready to continue the tour.`;
+
+  const result = await model.generateContent(prompt);
+  return result.response.text().trim();
+}
+
+/**
  * Generate a 768-dim text embedding using Gemini text-embedding-004.
  */
 export async function generateEmbedding(text) {

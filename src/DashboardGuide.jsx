@@ -1,7 +1,12 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from './firebase.js';
-import { speak } from './elevenlabs.js';
+import { speak, textToSpeech, playAudioBlob } from './elevenlabs.js';
+import { generateTourGuideReply } from './gemini.js';
+
+function speechRecognitionSupported() {
+  return typeof window !== 'undefined' && !!(window.SpeechRecognition || window.webkitSpeechRecognition);
+}
 
 // ─── Tour steps ───────────────────────────────────────────────────────────────
 
@@ -78,6 +83,7 @@ const Pointer = ({ direction }) => {
   return <div style={{ position: 'absolute', width: 0, height: 0, ...s[direction] }} />;
 };
 
+<<<<<<< HEAD
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function DashboardGuide({ userId, onDismiss }) {
@@ -106,6 +112,63 @@ export default function DashboardGuide({ userId, onDismiss }) {
   useEffect(() => {
     if (mode !== 'tour' || !step) return;
     if (!step.target) { setMascotPos({ top: '30%', left: '50%', transform: 'translate(-50%, -50%)' }); return; }
+=======
+// ─── Main Guide Component (voice optional + optional conversational Q&A) ─────
+
+export default function DashboardGuide({ userId, onDismiss }) {
+  /** null until owner picks a mode */
+  const [prefs, setPrefs]           = useState(null);
+  const [stepIndex, setStepIndex]   = useState(0);
+  const [speaking, setSpeaking]     = useState(false);
+  const [visible, setVisible]       = useState(true);
+  const [mascotPos, setMascotPos]   = useState({});
+  const [fadeIn, setFadeIn]         = useState(false);
+  const playbackRef                 = useRef(null);
+  const stepRef                     = useRef(0);
+  const recognizerRef               = useRef(null);
+  /** 'idle' | 'button' | 'ctrl-ptt' — who started speech recognition */
+  const voiceInputModeRef           = useRef('idle');
+  const pttTranscriptRef            = useRef('');
+  const ctrlPttHeldRef              = useRef(false);
+  /** Bumped when canceling recognition so stale onend handlers never submit */
+  const recognizerGenRef            = useRef(0);
+
+  const [chatReady, setChatReady]   = useState(false);
+  const [listening, setListening]   = useState(false);
+  const [chatLoading, setChatLoading] = useState(false);
+  const [chatError, setChatError]   = useState(null);
+  const [userLine, setUserLine]     = useState('');
+  const [stitchyLine, setStitchyLine] = useState('');
+  const [questionText, setQuestionText] = useState('');
+  /** True while Control push-to-talk session is capturing */
+  const [ctrlPttUi, setCtrlPttUi]       = useState(false);
+
+  const step = TOUR_STEPS[stepIndex];
+
+  useEffect(() => {
+    setUserLine('');
+    setStitchyLine('');
+    setChatError(null);
+    setChatReady(false);
+    setQuestionText('');
+  }, [stepIndex]);
+
+  // Fade in on mount
+  useEffect(() => {
+    const t = setTimeout(() => setFadeIn(true), 100);
+    return () => clearTimeout(t);
+  }, []);
+
+  // Position mascot near the target element
+  useEffect(() => {
+    if (!prefs || !step) return;
+
+    if (!step.target) {
+      setMascotPos({ top: '30%', left: '50%', transform: 'translate(-50%, -50%)' });
+      return;
+    }
+
+>>>>>>> 365bc3a (good stuff)
     const el = document.querySelector(step.target);
     if (!el) return;
     el.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -121,11 +184,19 @@ export default function DashboardGuide({ userId, onDismiss }) {
       setMascotPos(pos);
     }, 400);
     return () => clearTimeout(timer);
+<<<<<<< HEAD
   }, [stepIndex, step, mode]);
+=======
+  }, [stepIndex, step, prefs]);
+>>>>>>> 365bc3a (good stuff)
 
   // ── Tour: highlight target ──────────────────────────────────────────
   useEffect(() => {
+<<<<<<< HEAD
     if (mode !== 'tour' || !step?.target) return;
+=======
+    if (!prefs || !step?.target) return;
+>>>>>>> 365bc3a (good stuff)
     const el = document.querySelector(step.target);
     if (!el) return;
     const prev = { position: el.style.position, zIndex: el.style.zIndex, boxShadow: el.style.boxShadow, borderRadius: el.style.borderRadius, transition: el.style.transition };
@@ -137,6 +208,7 @@ export default function DashboardGuide({ userId, onDismiss }) {
     return () => { el.style.position = prev.position; el.style.zIndex = prev.zIndex; el.style.boxShadow = prev.boxShadow; el.style.borderRadius = prev.borderRadius; el.style.transition = prev.transition; };
   }, [stepIndex, step, mode]);
 
+<<<<<<< HEAD
   // ── Tour: TTS ───────────────────────────────────────────────────────
   useEffect(() => {
     if (mode !== 'tour' || !step || !visible) return;
@@ -147,14 +219,296 @@ export default function DashboardGuide({ userId, onDismiss }) {
       try { const p = await speak(step.speech); playbackRef.current = p; await p.finished; }
       catch (err) { console.warn('TTS failed:', err.message); }
       finally { if (stepRef.current === stepIndex) setSpeaking(false); }
+=======
+    return () => {
+      el.style.position = prev.position;
+      el.style.zIndex = prev.zIndex;
+      el.style.boxShadow = prev.boxShadow;
+      el.style.borderRadius = prev.borderRadius;
+      el.style.transition = prev.transition;
+    };
+  }, [stepIndex, step, prefs]);
+
+  // Speak the current step using ElevenLabs TTS when narration is enabled.
+  // Fetch MP3 first, then check we're still on this step before playing — avoids
+  // the previous step's audio starting after clicking Next during network delay.
+  useEffect(() => {
+    if (!step || !visible || !prefs?.narration) return;
+
+    const runForStep = stepIndex;
+    stepRef.current = stepIndex;
+    let cancelled = false;
+
+    const timer = setTimeout(() => {
+      void (async () => {
+        try {
+          if (cancelled || stepRef.current !== runForStep) return;
+
+          setSpeaking(true);
+          const blob = await textToSpeech(step.speech);
+          if (cancelled || stepRef.current !== runForStep) {
+            setSpeaking(false);
+            return;
+          }
+
+          const playback = playAudioBlob(blob);
+          playbackRef.current = playback;
+          await playback.audio.play();
+
+          if (cancelled || stepRef.current !== runForStep) {
+            playback.stop();
+            playbackRef.current = null;
+            setSpeaking(false);
+            return;
+          }
+
+          await playback.finished;
+        } catch (err) {
+          if (!cancelled) console.warn('TTS playback failed:', err.message);
+        } finally {
+          if (!cancelled && stepRef.current === runForStep) {
+            setSpeaking(false);
+            if (prefs.conversation) setChatReady(true);
+          }
+        }
+      })();
+>>>>>>> 365bc3a (good stuff)
     }, stepIndex === 0 ? 800 : 500);
     return () => { clearTimeout(timer); if (playbackRef.current) { playbackRef.current.stop(); playbackRef.current = null; } setSpeaking(false); };
   }, [stepIndex, visible, step, mode]);
 
+<<<<<<< HEAD
   // ── Chat: scroll to bottom ──────────────────────────────────────────
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
   const stopSpeech = useCallback(() => { if (playbackRef.current) { playbackRef.current.stop(); playbackRef.current = null; } setSpeaking(false); }, []);
+=======
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+      if (playbackRef.current) {
+        playbackRef.current.stop();
+        playbackRef.current = null;
+      }
+      setSpeaking(false);
+    };
+  }, [stepIndex, visible, step, prefs]);
+
+  const stopSpeech = useCallback(() => {
+    if (recognizerRef.current) {
+      recognizerGenRef.current += 1;
+      try {
+        recognizerRef.current.stop();
+      } catch { /* */ }
+    }
+    ctrlPttHeldRef.current = false;
+    setCtrlPttUi(false);
+    setListening(false);
+    if (playbackRef.current) {
+      playbackRef.current.stop();
+      playbackRef.current = null;
+    }
+    setSpeaking(false);
+  }, []);
+>>>>>>> 365bc3a (good stuff)
+
+  const sendQuestion = useCallback(async (text) => {
+    const q = text.trim();
+    if (!q || !prefs?.conversation || !step) return;
+    stopSpeech();
+    setListening(false);
+    setChatLoading(true);
+    setChatError(null);
+    setUserLine(q);
+    setStitchyLine('');
+    try {
+      const reply = await generateTourGuideReply({
+        stepTitle: step.title,
+        stepSpeech: step.speech,
+        userMessage: q,
+      });
+      setStitchyLine(reply);
+      if (prefs.narration) {
+        setSpeaking(true);
+        const playback = await speak(reply);
+        playbackRef.current = playback;
+        await playback.finished;
+      }
+    } catch (err) {
+      setChatError(err.message || 'Could not reach Stitchy. Check your connection and API key.');
+    } finally {
+      setSpeaking(false);
+      setChatLoading(false);
+      if (playbackRef.current) {
+        playbackRef.current = null;
+      }
+    }
+  }, [prefs, step, stopSpeech]);
+
+  const startListening = useCallback(() => {
+    if (chatLoading) return;
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) {
+      setChatError('Voice input works best in Chrome, Edge, or Safari. You can type your question below.');
+      return;
+    }
+    stopSpeech();
+    setChatError(null);
+    const gen = ++recognizerGenRef.current;
+    const r = new SR();
+    r.lang = 'en-US';
+    r.continuous = false;
+    r.interimResults = false;
+    voiceInputModeRef.current = 'button';
+    setCtrlPttUi(false);
+    r.onresult = (e) => {
+      if (gen !== recognizerGenRef.current) return;
+      const t = e.results[0][0].transcript;
+      setListening(false);
+      voiceInputModeRef.current = 'idle';
+      sendQuestion(t);
+    };
+    r.onerror = () => {
+      if (gen !== recognizerGenRef.current) return;
+      setListening(false);
+      voiceInputModeRef.current = 'idle';
+    };
+    r.onend = () => {
+      if (gen !== recognizerGenRef.current) return;
+      setListening(false);
+      recognizerRef.current = null;
+      voiceInputModeRef.current = 'idle';
+    };
+    recognizerRef.current = r;
+    setListening(true);
+    r.start();
+  }, [chatLoading, sendQuestion, stopSpeech]);
+
+  /** Hold Control: interrupt Stitchy, talk until you release Control (push-to-talk). */
+  const beginCtrlPushToTalk = useCallback(() => {
+    if (!prefs?.conversation || !chatReady || chatLoading) return;
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) return;
+    stopSpeech();
+    setChatError(null);
+    const gen = ++recognizerGenRef.current;
+    const r = new SR();
+    r.lang = 'en-US';
+    r.continuous = true;
+    r.interimResults = true;
+    voiceInputModeRef.current = 'ctrl-ptt';
+    setCtrlPttUi(true);
+    pttTranscriptRef.current = '';
+    r.onresult = (event) => {
+      if (gen !== recognizerGenRef.current) return;
+      let text = '';
+      for (let i = 0; i < event.results.length; i++) {
+        text += event.results[i][0].transcript;
+      }
+      pttTranscriptRef.current = text;
+    };
+    r.onerror = () => {
+      if (gen !== recognizerGenRef.current) return;
+      setListening(false);
+      setCtrlPttUi(false);
+      ctrlPttHeldRef.current = false;
+      voiceInputModeRef.current = 'idle';
+      recognizerRef.current = null;
+    };
+    r.onend = () => {
+      if (gen !== recognizerGenRef.current) return;
+      setListening(false);
+      setCtrlPttUi(false);
+      recognizerRef.current = null;
+      ctrlPttHeldRef.current = false;
+      voiceInputModeRef.current = 'idle';
+      const t = pttTranscriptRef.current.trim();
+      pttTranscriptRef.current = '';
+      if (t) sendQuestion(t);
+    };
+    recognizerRef.current = r;
+    ctrlPttHeldRef.current = true;
+    setListening(true);
+    try {
+      r.start();
+    } catch {
+      setListening(false);
+      setCtrlPttUi(false);
+      ctrlPttHeldRef.current = false;
+      voiceInputModeRef.current = 'idle';
+      recognizerRef.current = null;
+    }
+  }, [prefs, chatReady, chatLoading, sendQuestion, stopSpeech]);
+
+  /** Release Control — finalize utterance and send */
+  const endCtrlPushToTalk = useCallback(() => {
+    if (!ctrlPttHeldRef.current || voiceInputModeRef.current !== 'ctrl-ptt') return;
+    try {
+      recognizerRef.current?.stop();
+    } catch {
+      setListening(false);
+      ctrlPttHeldRef.current = false;
+    }
+  }, []);
+
+  /** Ctrl plus another key (e.g. copy) — cancel talk, do not send */
+  const abortCtrlPushToTalk = useCallback(() => {
+    if (!ctrlPttHeldRef.current || voiceInputModeRef.current !== 'ctrl-ptt') return;
+    recognizerGenRef.current += 1;
+    try {
+      recognizerRef.current?.stop();
+    } catch { /* */ }
+  }, []);
+
+  // ⌃ Push-to-talk (global): keydown Control = start + interrupt TTS; keyup = send
+  useEffect(() => {
+    if (!prefs?.conversation || !visible || !prefs) return;
+
+    const typingTarget = () => {
+      const el = document.activeElement;
+      const tag = el?.tagName;
+      return tag === 'INPUT' || tag === 'TEXTAREA' || el?.isContentEditable;
+    };
+
+    const onCtrlDown = (e) => {
+      if (e.repeat) return;
+      if (e.code !== 'ControlLeft' && e.code !== 'ControlRight') return;
+      if (ctrlPttHeldRef.current) return;
+      if (typingTarget()) return;
+      if (!chatReady || chatLoading) return;
+      beginCtrlPushToTalk();
+    };
+
+    const onCtrlUp = (e) => {
+      if (e.code !== 'ControlLeft' && e.code !== 'ControlRight') return;
+      endCtrlPushToTalk();
+    };
+
+    const onComboDuringPtt = (e) => {
+      if (!ctrlPttHeldRef.current || voiceInputModeRef.current !== 'ctrl-ptt') return;
+      if (e.code === 'ControlLeft' || e.code === 'ControlRight') return;
+      abortCtrlPushToTalk();
+    };
+
+    window.addEventListener('keydown', onCtrlDown);
+    window.addEventListener('keyup', onCtrlUp);
+    window.addEventListener('keydown', onComboDuringPtt, true);
+
+    return () => {
+      window.removeEventListener('keydown', onCtrlDown);
+      window.removeEventListener('keyup', onCtrlUp);
+      window.removeEventListener('keydown', onComboDuringPtt, true);
+    };
+  }, [prefs, visible, chatReady, chatLoading, beginCtrlPushToTalk, endCtrlPushToTalk, abortCtrlPushToTalk]);
+
+  useEffect(() => () => {
+    try {
+      if (recognizerRef.current) {
+        recognizerGenRef.current += 1;
+        recognizerRef.current.stop();
+      }
+    } catch { /* */ }
+  }, []);
 
   const goNext = useCallback(() => {
     stopSpeech();
@@ -169,6 +523,7 @@ export default function DashboardGuide({ userId, onDismiss }) {
     setTimeout(() => { setVisible(false); onDismiss?.(); }, 300);
   }, [onDismiss, stopSpeech]);
 
+<<<<<<< HEAD
   const skipToChat = useCallback(() => { stopSpeech(); setMode('chat'); }, [stopSpeech]);
 
   // ── Chat: send message ──────────────────────────────────────────────
@@ -188,10 +543,114 @@ export default function DashboardGuide({ userId, onDismiss }) {
       setMessages(prev => [...prev, { role: 'assistant', text: "Hmm, I couldn't process that. Try asking again!" }]);
     } finally {
       setThinking(false);
+=======
+    if (userId) {
+      try {
+        await updateDoc(doc(db, 'stores', userId), {
+          guideTourCompleted: true,
+          guideTourCompletedAt: serverTimestamp(),
+        });
+      } catch {
+        /* non-critical */
+      }
+>>>>>>> 365bc3a (good stuff)
     }
   };
 
   if (!visible) return null;
+<<<<<<< HEAD
+=======
+
+  // ── Choose walkthrough mode (quiet / voice / conversational) ───────────────
+  if (!prefs) {
+    return (
+      <>
+        <div
+          onClick={dismiss}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 55,
+            background: 'rgba(31, 24, 32, 0.4)',
+            backdropFilter: 'blur(3px)',
+            opacity: fadeIn ? 1 : 0,
+            transition: 'opacity 0.3s ease',
+            cursor: 'pointer',
+          }}
+        />
+        <div
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            position: 'fixed', zIndex: 65, left: '50%', top: '50%', transform: 'translate(-50%, -50%)',
+            width: 'min(440px, calc(100vw - 32px))',
+            background: 'var(--surface)',
+            borderRadius: 20,
+            padding: '28px 24px',
+            boxShadow: '0 20px 60px rgba(31,24,32,0.25), 0 0 0 1px var(--line)',
+            opacity: fadeIn ? 1 : 0,
+            transition: 'opacity 0.4s ease',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+            <MascotSVG speaking={false} size={44} />
+            <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--ink-900)' }}>Hi! I&apos;m Stitchy.</div>
+          </div>
+          <p style={{ fontSize: 14, color: 'var(--ink-600)', lineHeight: 1.55, margin: '0 0 18px' }}>
+            Want a conversational walkthrough of your dashboard, or prefer to read it yourself?
+          </p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <button
+              type="button"
+              onClick={() => setPrefs({ narration: false, conversation: false })}
+              style={{
+                textAlign: 'left', padding: '14px 16px', borderRadius: 12,
+                border: '1px solid var(--line)', background: 'var(--cream-50)', cursor: 'pointer',
+                fontSize: 14, fontWeight: 600, color: 'var(--ink-900)',
+              }}
+            >
+              <span style={{ display: 'block', marginBottom: 4 }}>On-screen only</span>
+              <span style={{ fontSize: 12, fontWeight: 400, color: 'var(--ink-500)' }}>Read each step — no audio</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setPrefs({ narration: true, conversation: false })}
+              style={{
+                textAlign: 'left', padding: '14px 16px', borderRadius: 12,
+                border: '1px solid var(--line)', background: 'var(--cream-50)', cursor: 'pointer',
+                fontSize: 14, fontWeight: 600, color: 'var(--ink-900)',
+              }}
+            >
+              <span style={{ display: 'block', marginBottom: 4 }}>Voice narration</span>
+              <span style={{ fontSize: 12, fontWeight: 400, color: 'var(--ink-500)' }}>I&apos;ll read each step aloud (listen-only)</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setPrefs({ narration: true, conversation: true })}
+              style={{
+                textAlign: 'left', padding: '14px 16px', borderRadius: 12,
+                border: '2px solid var(--aubergine-600)', background: 'var(--aubergine-100)', cursor: 'pointer',
+                fontSize: 14, fontWeight: 700, color: 'var(--aubergine-600)',
+              }}
+            >
+              <span style={{ display: 'block', marginBottom: 4 }}>Conversational tour</span>
+              <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--ink-700)' }}>Voice + ask me questions by mic or typing on each step</span>
+            </button>
+          </div>
+          <button
+            type="button"
+            onClick={dismiss}
+            style={{
+              marginTop: 16, width: '100%', padding: 10, borderRadius: 10, fontSize: 12, fontWeight: 600,
+              color: 'var(--ink-400)', background: 'transparent', cursor: 'pointer', border: 'none',
+            }}
+          >
+            Skip tour entirely
+          </button>
+        </div>
+      </>
+    );
+  }
+
+  if (!step) return null;
+>>>>>>> 365bc3a (good stuff)
 
   // ── Minimized bubble ────────────────────────────────────────────────
   if (mode === 'minimized') {
@@ -299,19 +758,131 @@ export default function DashboardGuide({ userId, onDismiss }) {
   // ── Tour mode ───────────────────────────────────────────────────────
   const isLast = stepIndex === TOUR_STEPS.length - 1;
   const isFirst = stepIndex === 0;
+  const conv    = prefs.conversation;
 
   return (
     <>
       <div onClick={dismiss} style={{ position: 'fixed', inset: 0, zIndex: 55, background: 'rgba(31,24,32,0.35)', backdropFilter: 'blur(2px)', opacity: fadeIn ? 1 : 0, transition: 'opacity 0.3s ease', cursor: 'pointer' }} />
 
+<<<<<<< HEAD
       <div style={{ position: 'fixed', zIndex: 65, ...mascotPos, opacity: fadeIn ? 1 : 0, transition: 'all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1)' }}>
         <div style={{ background: 'var(--surface)', borderRadius: 16, padding: '16px 20px', boxShadow: '0 8px 32px rgba(31,24,32,0.2), 0 0 0 1px var(--line)', maxWidth: 300, minWidth: 240, position: 'relative' }}>
+=======
+      {/* Mascot + speech bubble */}
+      <div
+        style={{
+          position: 'fixed', zIndex: 65,
+          ...mascotPos,
+          opacity: fadeIn ? 1 : 0,
+          transition: 'all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1)',
+        }}
+      >
+        {/* Speech bubble */}
+        <div style={{
+          background: 'var(--surface)', borderRadius: 16,
+          padding: '16px 20px',
+          boxShadow: '0 8px 32px rgba(31,24,32,0.2), 0 0 0 1px var(--line)',
+          maxWidth: conv ? 340 : 300, minWidth: 240, position: 'relative',
+        }}>
+>>>>>>> 365bc3a (good stuff)
           {step.pointer && <Pointer direction={step.pointer} />}
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
             <div style={{ padding: '2px 8px', borderRadius: 999, background: 'var(--aubergine-100)', color: 'var(--aubergine-600)', fontSize: 10, fontWeight: 700 }}>{stepIndex + 1} / {TOUR_STEPS.length}</div>
             <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink-900)' }}>{step.title}</div>
           </div>
+<<<<<<< HEAD
           <div style={{ fontSize: 12, lineHeight: 1.5, color: 'var(--ink-600)', marginBottom: 14 }}>{step.speech}</div>
+=======
+
+          {/* Narration text */}
+          <div style={{ fontSize: 12, lineHeight: 1.5, color: 'var(--ink-600)', marginBottom: conv ? 10 : 14 }}>
+            {step.speech}
+          </div>
+
+          {conv && (
+            <div style={{
+              marginBottom: 12, paddingTop: 10, borderTop: '1px solid var(--line)',
+            }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--aubergine-600)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                Chat with Stitchy
+              </div>
+              {!chatReady ? (
+                <div style={{ fontSize: 11, color: 'var(--ink-400)', marginBottom: 8 }}>
+                  Hang on — finishing this step…
+                </div>
+              ) : (
+                <>
+                  {userLine && (
+                    <div style={{ fontSize: 11, color: 'var(--ink-600)', marginBottom: 6, lineHeight: 1.45 }}>
+                      <strong style={{ color: 'var(--ink-900)' }}>You:</strong> {userLine}
+                    </div>
+                  )}
+                  {stitchyLine && (
+                    <div style={{ fontSize: 11, color: 'var(--ink-700)', marginBottom: 10, lineHeight: 1.45 }}>
+                      <strong style={{ color: 'var(--aubergine-600)' }}>Stitchy:</strong> {stitchyLine}
+                    </div>
+                  )}
+                  {chatError && (
+                    <div style={{ fontSize: 11, color: '#b54a6a', marginBottom: 8 }}>{chatError}</div>
+                  )}
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', marginBottom: 6 }}>
+                    <button
+                      type="button"
+                      onClick={startListening}
+                      disabled={chatLoading || listening}
+                      style={{
+                        padding: '6px 12px', borderRadius: 10, fontSize: 12, fontWeight: 600,
+                        border: '1px solid var(--line)', background: listening ? 'var(--aubergine-100)' : 'var(--surface)',
+                        color: 'var(--ink-900)', cursor: chatLoading || listening ? 'wait' : 'pointer',
+                      }}
+                    >
+                      {listening ? (ctrlPttUi ? '⌃ Talk…' : 'Listening…') : '🎤 Speak'}
+                    </button>
+                    <input
+                      type="text"
+                      value={questionText}
+                      onChange={(e) => setQuestionText(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          sendQuestion(questionText);
+                          setQuestionText('');
+                        }
+                      }}
+                      placeholder="Or type a question…"
+                      disabled={chatLoading}
+                      style={{
+                        flex: 1, minWidth: 140, padding: '8px 10px', borderRadius: 10,
+                        border: '1px solid var(--line)', fontSize: 12, background: 'var(--cream-50)',
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => { sendQuestion(questionText); setQuestionText(''); }}
+                      disabled={chatLoading || !questionText.trim()}
+                      style={{
+                        padding: '6px 12px', borderRadius: 10, fontSize: 12, fontWeight: 700,
+                        background: 'var(--aubergine-600)', color: '#fff',
+                        cursor: chatLoading || !questionText.trim() ? 'not-allowed' : 'pointer',
+                        opacity: chatLoading || !questionText.trim() ? 0.5 : 1,
+                      }}
+                    >
+                      Send
+                    </button>
+                  </div>
+                  <div style={{ fontSize: 10, color: 'var(--ink-400)', marginTop: 4, lineHeight: 1.4 }}>
+                    <strong style={{ color: 'var(--ink-600)' }}>Push-to-talk:</strong> hold{' '}
+                    <kbd style={{ padding: '1px 5px', borderRadius: 4, background: 'var(--cream-200)', fontSize: 10 }}>Control</kbd>{' '}
+                    to interrupt Stitchy and speak — release to send.
+                    {!speechRecognitionSupported() && ' Voice isn’t available in this browser; use the text box.'}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* Controls */}
+>>>>>>> 365bc3a (good stuff)
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             {!isFirst && <button onClick={goBack} style={{ padding: '5px 10px', borderRadius: 8, fontSize: 12, fontWeight: 600, color: 'var(--ink-500)', cursor: 'pointer', background: 'transparent' }}>← Back</button>}
             <div style={{ flex: 1 }} />

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { onAuthStateChanged } from 'firebase/auth';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import { auth, db } from './firebase.js';
 import { Spinner, Wordmark, Btn } from './primitives.jsx';
@@ -9,6 +9,7 @@ import StoreOnboarding from './store/StoreOnboarding.jsx';
 import StoreOwnerApp from './owner.jsx';
 import ShopperAuth from './shopper/ShopperAuth.jsx';
 import ShopperApp from './shopper.jsx';
+import { isStorePortalHost, getShopperAppOrigin } from './storePortalHost.js';
 
 // App state machine:
 //   loading      → checking auth
@@ -41,6 +42,11 @@ export default function App() {
       if (!firebaseUser) {
         setUser(null);
         setRole(null);
+        // Seller subdomain: never show shopper landing / guest shopper app
+        if (isStorePortalHost()) {
+          setAppState('store-auth');
+          return;
+        }
         // Check if user previously chose "I'm shopping" (guest mode)
         if (localStorage.getItem('stylography_role') === 'shopper') {
           setRole('shopper');
@@ -65,6 +71,11 @@ export default function App() {
       // Check if shopper
       const userSnap = await getDoc(doc(db, 'users', firebaseUser.uid));
       if (userSnap.exists()) {
+        if (isStorePortalHost()) {
+          setRole('shopper');
+          setAppState('store-portal-shopper');
+          return;
+        }
         setRole('shopper');
         localStorage.setItem('stylography_role', 'shopper');
         setAppState('shopper-app');
@@ -73,9 +84,13 @@ export default function App() {
 
       // Authenticated but no doc yet — check localStorage for role
       const savedRole = localStorage.getItem('stylography_role');
-      if (savedRole === 'shopper') {
+      if (savedRole === 'shopper' && !isStorePortalHost()) {
         setRole('shopper');
         setAppState('shopper-app');
+        return;
+      }
+      if (isStorePortalHost()) {
+        setAppState('store-auth');
         return;
       }
       setAppState('landing');
@@ -118,8 +133,53 @@ export default function App() {
         user={user}
         initialScreen="feed"
         stripeSuccess={stripeSuccess}
-        onExit={() => { setUser(null); setRole(null); localStorage.removeItem('stylography_role'); setAppState('landing'); }}
+        onExit={() => {
+          setUser(null);
+          setRole(null);
+          localStorage.removeItem('stylography_role');
+          setAppState(isStorePortalHost() ? 'store-auth' : 'landing');
+        }}
       />
+    );
+  }
+
+  if (appState === 'store-portal-shopper') {
+    const shopperOrigin = getShopperAppOrigin();
+    return (
+      <div style={{
+        minHeight: '100vh',
+        background: 'var(--cream-50)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 24,
+      }}>
+        <div style={{
+          maxWidth: 420,
+          background: 'var(--surface)',
+          borderRadius: 'var(--r-md)',
+          border: '1px solid var(--line)',
+          padding: '28px 24px',
+          boxShadow: 'var(--shadow-sm)',
+          textAlign: 'center',
+        }}>
+          <Wordmark size={22} />
+          <h1 style={{ fontSize: 18, fontWeight: 600, margin: '16px 0 8px', color: 'var(--ink-900)' }}>
+            Shopper account
+          </h1>
+          <p style={{ fontSize: 14, color: 'var(--ink-600)', lineHeight: 1.55, margin: '0 0 20px' }}>
+            This subdomain is for store owners. Open the shopper app to browse outfits, or sign out and use a seller account here.
+          </p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <Btn variant="accent" size="lg" fullWidth onClick={() => { window.location.href = shopperOrigin; }}>
+              Go to shopper app
+            </Btn>
+            <Btn variant="soft" size="lg" fullWidth onClick={() => signOut(auth).catch(() => {})}>
+              Sign out
+            </Btn>
+          </div>
+        </div>
+      </div>
     );
   }
 
