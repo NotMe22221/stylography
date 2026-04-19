@@ -10,6 +10,7 @@ import {
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { db, storage } from "../firebase.js";
 import { tagGarment } from "../gemini.js";
+import { enrichStoreFromWebsite } from "../tinyfish.js";
 import {
   Wordmark,
   Btn,
@@ -110,9 +111,43 @@ export default function StoreOnboarding({ user, onComplete }) {
   const [uploadItems, setUploadItems] = useState([]);
   const [activeUpload, setActiveUpload] = useState(null);
   const [liveStore, setLiveStore] = useState(null);
+  const [enriching, setEnriching] = useState(false);
+  const [enriched, setEnriched] = useState(false);
 
   const next = () => setStep((s) => s + 1);
   const back = () => setStep((s) => s - 1);
+
+  // ── TinyFish: enrich store info from website ────────────────────────
+  const handleWebsiteBlur = async () => {
+    const website = info.website.trim();
+    if (!website || enriched || enriching) return;
+
+    setEnriching(true);
+    try {
+      const data = await enrichStoreFromWebsite(website);
+      if (data) {
+        // Auto-fill fields that are still empty
+        setInfo((prev) => ({
+          ...prev,
+          name: prev.name || data.storeName || prev.name,
+          city: prev.city || data.city || prev.city,
+          address: prev.address || data.address || prev.address,
+          instagram: prev.instagram || data.instagram || prev.instagram,
+          phone: prev.phone || data.phone || prev.phone,
+        }));
+        if (!bio && data.bio) setBio(data.bio);
+        if (!storeType && data.storeType) {
+          const validTypes = ['vintage', 'resale', 'antique', 'thrift', 'consignment'];
+          if (validTypes.includes(data.storeType)) setStoreType(data.storeType);
+        }
+        setEnriched(true);
+      }
+    } catch (err) {
+      console.warn('Store enrichment failed:', err.message);
+    } finally {
+      setEnriching(false);
+    }
+  };
 
   // ── Step 3: save store to Firestore, upload hero photo ──────────────
   const saveProfileAndContinue = async () => {
@@ -466,15 +501,42 @@ export default function StoreOnboarding({ user, onComplete }) {
                   gap: 12,
                 }}
               >
-                <Field label="Website" hint="Optional">
-                  <input
-                    style={inputStyle}
-                    value={info.website}
-                    onChange={(e) =>
-                      setInfo((i) => ({ ...i, website: e.target.value }))
-                    }
-                    placeholder="yourstore.com"
-                  />
+                <Field label="Website" hint="Optional — we'll auto-fill your info">
+                  <div style={{ position: "relative" }}>
+                    <input
+                      style={inputStyle}
+                      value={info.website}
+                      onChange={(e) =>
+                        setInfo((i) => ({ ...i, website: e.target.value }))
+                      }
+                      onBlur={handleWebsiteBlur}
+                      placeholder="yourstore.com"
+                    />
+                    {enriching && (
+                      <div style={{
+                        position: "absolute", right: 10, top: "50%",
+                        transform: "translateY(-50%)",
+                        display: "flex", alignItems: "center", gap: 6,
+                      }}>
+                        <Spinner size={14} />
+                        <span style={{ fontSize: 11, color: "var(--aubergine-600)", fontWeight: 600 }}>
+                          Looking up your store…
+                        </span>
+                      </div>
+                    )}
+                    {enriched && !enriching && (
+                      <div style={{
+                        position: "absolute", right: 10, top: "50%",
+                        transform: "translateY(-50%)",
+                        display: "flex", alignItems: "center", gap: 4,
+                      }}>
+                        <Icon name="check-circle" size={14} color="var(--sage-500)" />
+                        <span style={{ fontSize: 11, color: "var(--sage-500)", fontWeight: 600 }}>
+                          Auto-filled!
+                        </span>
+                      </div>
+                    )}
+                  </div>
                 </Field>
                 <Field label="Instagram handle" hint="Optional">
                   <input
@@ -498,6 +560,20 @@ export default function StoreOnboarding({ user, onComplete }) {
                   placeholder="+1 (612) 555-0123"
                 />
               </Field>
+              {enriched && (
+                <div style={{
+                  padding: 14, borderRadius: 8,
+                  background: "var(--sage-200)", border: "1px solid var(--sage-200)",
+                  fontSize: 12, color: "#2E3A2E", lineHeight: 1.5,
+                  marginBottom: 8, display: "flex", alignItems: "flex-start", gap: 10,
+                }}>
+                  <Icon name="sparkle" size={16} color="#2E3A2E" />
+                  <div>
+                    <strong>We found info about your store!</strong> Fields were auto-filled from your website.
+                    Feel free to edit anything that doesn't look right.
+                  </div>
+                </div>
+              )}
               <div style={{ display: "flex", gap: 10, marginTop: 8 }}>
                 <Btn
                   variant="soft"
