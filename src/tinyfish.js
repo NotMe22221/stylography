@@ -7,16 +7,11 @@ const API_KEY = import.meta.env.VITE_TINYFISH_API_KEY;
 const SEARCH_URL = 'https://api.search.tinyfish.ai';
 
 /**
- * Search TinyFish for information about a store's website.
- *
- * @param {string} websiteOrName — store website URL or name
- * @returns {Promise<{ results: Array<{ title, snippet, url, site_name }>, query: string }>}
+ * Run a TinyFish search query.
  */
-export async function searchStore(websiteOrName) {
-  const query = websiteOrName.replace(/^https?:\/\//, '').replace(/\/$/, '');
-
+async function tinyfishSearch(queryStr) {
   const params = new URLSearchParams({
-    query: `${query} vintage store resale shop about`,
+    query: queryStr,
     location: 'US',
     language: 'en',
   });
@@ -34,42 +29,43 @@ export async function searchStore(websiteOrName) {
 }
 
 /**
- * Extract store info from TinyFish search results using Gemini.
- * Takes the raw search snippets and asks Gemini to extract structured store data.
- *
- * @param {string} website — the store's website
- * @param {Array} results — TinyFish search results
- * @param {Function} geminiExtract — function to call Gemini for extraction
- * @returns {Promise<object>} — extracted store info
- */
-export async function extractStoreInfo(website, results) {
-  // Build a context string from search results
-  const context = results
-    .slice(0, 5)
-    .map(r => `Title: ${r.title}\nSnippet: ${r.snippet}\nURL: ${r.url}`)
-    .join('\n\n');
-
-  return { website, context, results: results.slice(0, 5) };
-}
-
-/**
  * Full pipeline: search for a store website and extract useful info.
- * Uses Gemini to parse the search results into structured store data.
+ * Runs two searches — one for general info, one specifically for address/contact.
+ * Uses Gemini to parse the combined results into structured store data.
  *
  * @param {string} website — store website URL or name
- * @returns {Promise<{ bio: string, city: string, storeType: string, instagram: string, phone: string } | null>}
+ * @returns {Promise<object | null>}
  */
 export async function enrichStoreFromWebsite(website) {
   try {
-    const { results } = await searchStore(website);
+    const domain = website.replace(/^https?:\/\//, '').replace(/\/.*$/, '').replace(/^www\./, '');
 
-    if (!results || results.length === 0) {
+    // Run two targeted searches in parallel
+    const [generalResults, contactResults] = await Promise.all([
+      tinyfishSearch(`"${domain}" vintage store resale shop about`),
+      tinyfishSearch(`"${domain}" address location hours phone contact`),
+    ]);
+
+    const allResults = [
+      ...(generalResults.results || []),
+      ...(contactResults.results || []),
+    ];
+
+    if (allResults.length === 0) {
       return null;
     }
 
+    // Deduplicate by URL
+    const seen = new Set();
+    const unique = allResults.filter(r => {
+      if (seen.has(r.url)) return false;
+      seen.add(r.url);
+      return true;
+    });
+
     // Build context from search results
-    const context = results
-      .slice(0, 5)
+    const context = unique
+      .slice(0, 8)
       .map(r => `Title: ${r.title}\nSnippet: ${r.snippet}\nURL: ${r.url}`)
       .join('\n\n');
 
@@ -78,22 +74,29 @@ export async function enrichStoreFromWebsite(website) {
     const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
     const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
 
-    const prompt = `You are helping auto-fill a store profile for a vintage/resale clothing platform called Stylography.
+    const prompt = `You are helping auto-fill a store profile for a vintage/resale clothing platform.
 
-Given these web search results about "${website}", extract the following information. If you can't find something, leave it as an empty string.
+Given these web search results about "${website}", extract ONLY information that is EXPLICITLY stated in the search results. Do NOT guess or make up any information.
+
+CRITICAL RULES:
+- For "address": ONLY include a street address if you can see the actual street number and street name in the search results. If you only see a city name, put that in "city" instead and leave "address" empty.
+- For "phone": ONLY include if you see an actual phone number in the results.
+- For "instagram": ONLY include if you see an actual Instagram handle in the results.
+- For any field where the information is not clearly stated, return an empty string "".
+- Do NOT invent or hallucinate addresses, phone numbers, or other contact info.
 
 Search results:
 ${context}
 
-Return ONLY valid JSON with these fields:
+Return ONLY valid JSON:
 {
-  "bio": "2-3 sentence description of the store's vibe, specialty, and what makes it unique. Write in first person as if the store owner is describing their shop.",
-  "city": "City, State (e.g. 'Minneapolis, MN')",
-  "storeType": "One of: vintage, resale, antique, thrift, consignment",
-  "instagram": "Instagram handle if found (without @)",
-  "phone": "Phone number if found",
-  "address": "Street address if found",
-  "storeName": "The store's name"
+  "storeName": "The store's actual name as found in results, or empty string",
+  "bio": "2-3 sentence description of the store based on what the results say. Write in first person. If not enough info, return empty string.",
+  "city": "City, State format (e.g. 'Minneapolis, MN') — only if clearly stated",
+  "storeType": "One of: vintage, resale, antique, thrift, consignment — based on how the store describes itself, or empty string",
+  "instagram": "Instagram handle without @ — only if explicitly found",
+  "phone": "Phone number — only if explicitly found",
+  "address": "Full street address — only if a real street address is explicitly stated (not just a city)"
 }`;
 
     const result = await model.generateContent(prompt);
