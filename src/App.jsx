@@ -71,7 +71,13 @@ export default function App() {
         return;
       }
 
-      // Authenticated but no doc yet → go to landing
+      // Authenticated but no doc yet — check localStorage for role
+      const savedRole = localStorage.getItem('stylography_role');
+      if (savedRole === 'shopper') {
+        setRole('shopper');
+        setAppState('shopper-app');
+        return;
+      }
       setAppState('landing');
     });
     return unsub;
@@ -99,6 +105,7 @@ export default function App() {
         }}
         onSkip={() => {
           setRole('shopper');
+          localStorage.setItem('stylography_role', 'shopper');
           setAppState('shopper-app');
         }}
       />
@@ -109,7 +116,7 @@ export default function App() {
     return (
       <ShopperApp
         user={user}
-        initialScreen={stripeSuccess ? 'feed' : (user ? 'welcome' : 'feed')}
+        initialScreen="feed"
         stripeSuccess={stripeSuccess}
         onExit={() => { setUser(null); setRole(null); localStorage.removeItem('stylography_role'); setAppState('landing'); }}
       />
