@@ -1044,6 +1044,12 @@ function scoreItemAgainstPiece(item, piece) {
 }
 
 const ShopPin = ({ push, savedItems, toggleSaveItem, allItems, user, setClaimed, pinPhoto, setPinPhoto }) => {
+  const ANALYZE_STEPS = [
+    'Detecting key pieces',
+    'Reading colors and textures',
+    'Matching nearby inventory',
+    'Ranking best-fit looks',
+  ];
   const [stage,      setStage]      = useState(() => {
     const consented = typeof localStorage !== 'undefined' && localStorage.getItem(CONSENT_KEY);
     if (pinPhoto && consented) return 'analyzing';
@@ -1056,6 +1062,7 @@ const ShopPin = ({ push, savedItems, toggleSaveItem, allItems, user, setClaimed,
   const [preview,    setPreview]    = useState(pinPhoto?.preview || null);
   const [claimItem,  setClaimItem]  = useState(null);
   const [searchMode, setSearchMode] = useState('vector'); // 'vector' | 'keyword'
+  const [analyzeStepIdx, setAnalyzeStepIdx] = useState(0);
   const fileRef = React.useRef();
 
   // Auto-start if photo was passed in and consent already given
@@ -1064,6 +1071,15 @@ const ShopPin = ({ push, savedItems, toggleSaveItem, allItems, user, setClaimed,
       runAnalysis(pinPhoto.file);
     }
   }, []);
+
+  useEffect(() => {
+    if (stage !== 'analyzing') return;
+    setAnalyzeStepIdx(0);
+    const timer = setInterval(() => {
+      setAnalyzeStepIdx((prev) => (prev + 1) % ANALYZE_STEPS.length);
+    }, 1400);
+    return () => clearInterval(timer);
+  }, [stage]);
 
   const grantConsent = () => {
     localStorage.setItem(CONSENT_KEY, '1');
@@ -1227,14 +1243,25 @@ const ShopPin = ({ push, savedItems, toggleSaveItem, allItems, user, setClaimed,
       )}
 
       {stage === 'analyzing' && (
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 32, gap: 24 }}>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 32, gap: 18 }}>
           {preview && (
-            <div style={{ width: '100%', maxHeight: 280, borderRadius: 'var(--r-md)', overflow: 'hidden', position: 'relative' }}>
-              <img src={preview} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="" />
-              <div style={{ position: 'absolute', inset: 0, background: 'rgba(91,77,122,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <div style={{ padding: '12px 20px', borderRadius: 999, background: 'rgba(31,24,32,0.85)', color: '#fff', display: 'flex', alignItems: 'center', gap: 10, fontSize: 13 }}>
+            <div style={{ width: '100%', maxHeight: 320, borderRadius: 'var(--r-md)', overflow: 'hidden', position: 'relative', boxShadow: '0 14px 40px rgba(31,24,32,0.2)' }}>
+              <img src={preview} style={{ width: '100%', height: '100%', objectFit: 'cover', animation: 'shopPinSlowZoom 7s ease-in-out infinite' }} alt="" />
+
+              {/* Scan overlay */}
+              <div style={{ position: 'absolute', inset: 0, background: 'rgba(91,77,122,0.28)' }} />
+              <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to bottom, rgba(255,255,255,0.05), rgba(255,255,255,0))' }} />
+              <div style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 2, background: 'rgba(255,255,255,0.85)', boxShadow: '0 0 12px rgba(255,255,255,0.9)', animation: 'shopPinScanLine 2.1s ease-in-out infinite' }} />
+
+              {/* Floating finder dots */}
+              <div style={{ position: 'absolute', top: '24%', left: '18%', width: 10, height: 10, borderRadius: '50%', background: '#fff', opacity: 0.75, animation: 'shopPinPulseDot 1.4s ease-in-out infinite' }} />
+              <div style={{ position: 'absolute', top: '48%', right: '20%', width: 9, height: 9, borderRadius: '50%', background: '#fff', opacity: 0.75, animation: 'shopPinPulseDot 1.4s ease-in-out 0.3s infinite' }} />
+              <div style={{ position: 'absolute', bottom: '22%', left: '37%', width: 8, height: 8, borderRadius: '50%', background: '#fff', opacity: 0.75, animation: 'shopPinPulseDot 1.4s ease-in-out 0.55s infinite' }} />
+
+              <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <div style={{ padding: '12px 20px', borderRadius: 999, background: 'rgba(31,24,32,0.86)', color: '#fff', display: 'flex', alignItems: 'center', gap: 10, fontSize: 13 }}>
                   <Spin />
-                  Gemini is identifying pieces…
+                  Looking for fits...
                 </div>
               </div>
             </div>
@@ -1245,11 +1272,21 @@ const ShopPin = ({ push, savedItems, toggleSaveItem, allItems, user, setClaimed,
                 <Icon name="sparkle" size={32} color="var(--aubergine-600)" style={{ animation: 'pulse 1.5s ease-in-out infinite' }} />
               </div>
               <div style={{ textAlign: 'center' }}>
-                <div className="display" style={{ fontSize: 20, fontWeight: 600 }}>Analyzing outfit…</div>
+                <div className="display" style={{ fontSize: 20, fontWeight: 600 }}>Analyzing outfit...</div>
                 <div style={{ fontSize: 13, color: 'var(--ink-500)', marginTop: 6 }}>Gemini is identifying pieces and finding matches</div>
               </div>
             </>
           )}
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, minHeight: 24 }}>
+            <Icon name="sparkle" size={14} color="var(--aubergine-600)" />
+            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--aubergine-600)' }}>
+              {ANALYZE_STEPS[analyzeStepIdx]}
+            </div>
+          </div>
+          <div style={{ width: 'min(360px, 100%)', height: 6, borderRadius: 999, background: 'var(--cream-200)', overflow: 'hidden' }}>
+            <div style={{ width: '38%', height: '100%', borderRadius: 999, background: 'linear-gradient(90deg, var(--aubergine-600), #8B6BAE)', animation: 'shopPinLoadingBar 1.4s ease-in-out infinite' }} />
+          </div>
         </div>
       )}
 
@@ -1400,6 +1437,25 @@ const ShopPin = ({ push, savedItems, toggleSaveItem, allItems, user, setClaimed,
           onDeny={() => { setPinPhoto(null); setPreview(null); setStage('drop'); }}
         />
       )}
+      <style>{`
+        @keyframes shopPinScanLine {
+          0% { transform: translateY(0); opacity: 0.7; }
+          50% { opacity: 1; }
+          100% { transform: translateY(300px); opacity: 0.7; }
+        }
+        @keyframes shopPinPulseDot {
+          0%, 100% { transform: scale(1); opacity: 0.55; }
+          50% { transform: scale(1.35); opacity: 0.95; }
+        }
+        @keyframes shopPinLoadingBar {
+          0% { transform: translateX(-120%); }
+          100% { transform: translateX(360%); }
+        }
+        @keyframes shopPinSlowZoom {
+          0%, 100% { transform: scale(1.0); }
+          50% { transform: scale(1.03); }
+        }
+      `}</style>
     </div>
   );
 };
