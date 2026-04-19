@@ -94,7 +94,17 @@ exports.embedContent = onCall(
  *   window.location.href = data.url;
  */
 exports.createCheckoutSession = onCall(
-  { region: LOCATION, timeoutSeconds: 30, secrets: [STRIPE_SECRET], cors: true },
+  {
+    region: LOCATION,
+    timeoutSeconds: 30,
+    secrets: [STRIPE_SECRET],
+    cors: [
+      "https://stylography.vercel.app",
+      "http://localhost:5173",
+      "http://localhost:3000",
+    ],
+    invoker: "public",
+  },
   async (request) => {
     const { itemId, storeId, itemName, price, successUrl, cancelUrl, userId } =
       request.data;

@@ -845,6 +845,28 @@ export const ClaimSheet = ({ item, user, onClose, onConfirm, resolvedStore }) =>
     }
     setLoading(true);
     try {
+      if (method === 'pickup') {
+        try {
+          const { data } = await createCheckoutSession({
+            itemId: item.id,
+            storeId: item.storeId || item.store,
+            itemName: item.name,
+            price: item.price,
+            successUrl: `${window.location.origin}${window.location.pathname}`,
+            cancelUrl: `${window.location.origin}${window.location.pathname}`,
+            userId: user.uid,
+            buyerHandle: user.email?.split('@')[0] || 'shopper',
+            itemKind: item.kind,
+          });
+          if (data?.url) {
+            window.location.href = data.url;
+            return;
+          }
+        } catch (stripeErr) {
+          console.warn('Stripe checkout unavailable, falling back to in-app claim:', stripeErr.message);
+        }
+      }
+
       const { addDoc, collection, serverTimestamp } = await import('firebase/firestore');
       await addDoc(collection(db, 'claims'), {
         storeId:     item.storeId || item.store,
@@ -927,7 +949,9 @@ export const ClaimSheet = ({ item, user, onClose, onConfirm, resolvedStore }) =>
         <div style={{ marginTop: 20, padding: 14, borderRadius: 'var(--r-md)', background: 'var(--blush-100)', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
           <Icon name="clock" size={18} color="var(--plum-900)" />
           <div style={{ fontSize: 12, lineHeight: 1.4, color: 'var(--plum-900)' }}>
-            <strong>No payment now.</strong> {store.owner} confirms availability, then you pay at pickup.
+            {method === 'pickup'
+              ? <><strong>Secure checkout now.</strong> You will pay via Stripe, then {store.owner || store.name || 'the store'} confirms pickup details.</>
+              : <><strong>No payment now.</strong> {store.owner || store.name || 'The store'} confirms availability before fulfillment.</>}
           </div>
         </div>
 
@@ -938,7 +962,7 @@ export const ClaimSheet = ({ item, user, onClose, onConfirm, resolvedStore }) =>
 
         <Btn variant="accent" size="lg" fullWidth style={{ marginTop: 14 }} disabled={loading} onClick={sendClaim}
           icon={loading ? <Spin /> : null}>
-          {loading ? 'Sending claim…' : 'Send claim request'}
+          {loading ? (method === 'pickup' ? 'Opening checkout…' : 'Sending claim…') : (method === 'pickup' ? `Checkout · $${item?.price}` : 'Send claim request')}
         </Btn>
       </div>
     </div>
