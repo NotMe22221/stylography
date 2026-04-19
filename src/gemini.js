@@ -97,6 +97,10 @@ Rules:
 export async function generateOutfitImage(selectedItems) {
   const model = genAI.getGenerativeModel({
     model: "gemini-3.1-flash-image-preview",
+    systemInstruction: `You generate flat-lay product photography only.
+Hard rules for every image:
+- Show ONLY clothing and accessories as physical objects on a surface. No people, no body parts, no faces, hands, hair, or skin. No mannequins, dress forms, or torsos.
+- If reference photos show garments on a model or hanger, ignore the person and hanger — extract the garments and render them laid flat.`,
   });
 
   const descriptions = selectedItems
@@ -106,10 +110,12 @@ export async function generateOutfitImage(selectedItems) {
     )
     .join("\n");
 
-  const prompt = `You are a fashion stylist.
+  const prompt = `CRITICAL — OUTPUT FORMAT:
+Generate ONE image: pure flat-lay / overhead product shot. Absolutely zero humans, zero mannequins, zero implied bodies.
 
-Create a stylish outfit featuring these exact pieces styled together as one cohesive outfit:
+The attached photos may show items on models or hangers — treat them ONLY as color/texture reference for the garments themselves. Do not recreate or echo any person from the references.
 
+Pieces to combine into one styled board:
 ${descriptions}
 
 LAYOUT INSTRUCTIONS:
@@ -123,7 +129,9 @@ VISUAL STYLE:
 - Soft, even flat lay lighting — no harsh shadows, slight natural drop shadow under each piece.
 - Photorealistic fabric textures, accurate colors, visible stitching and material detail.
 - Editorial mood board / Pinterest flat lay aesthetic.
-- Shot from directly overhead (top-down bird's eye view), 8k resolution, hyper-realistic.`;
+- Shot from directly overhead (top-down bird's eye view), 8k resolution, hyper-realistic.
+
+FORBIDDEN IN THE FINAL IMAGE (do not render): people, models, faces, limbs, skin, mannequins, ghost mannequins, hangers that suggest a body, dressing rooms, mirrors with reflections, runway, street style photography.`;
 
   // Attach item photos as visual context
   const parts = [{ text: prompt }];
