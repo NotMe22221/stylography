@@ -49,6 +49,8 @@ export async function suggestOutfits(items) {
     model: "gemini-3.1-flash-image-preview",
   });
 
+  console.log("lol");
+
   const catalog = items
     .map(
       (i) =>
