@@ -64,8 +64,6 @@ const TOUR_STEPS = [
   },
 ];
 
-const AGENT_ID = 'agent_2901kpj5vqbtegarwpwgqm4newz5';
-
 // ─── Mascot SVG (cute sewing spool character) ─────────────────────────────────
 
 const MascotSVG = ({ speaking, size = 52 }) => (
@@ -106,11 +104,9 @@ const Pointer = ({ direction }) => {
   return <div style={{ position: 'absolute', width: 0, height: 0, ...styles[direction] }} />;
 };
 
-// ─── Main Guide Component ─────────────────────────────────────────────────────
+// ─── Main Guide Component (TTS speaking tour only) ────────────────────────────
 
 export default function DashboardGuide({ userId, onDismiss }) {
-  // Tour state
-  const [mode, setMode]             = useState('tour'); // 'tour' | 'agent' | 'minimized'
   const [stepIndex, setStepIndex]   = useState(0);
   const [speaking, setSpeaking]     = useState(false);
   const [visible, setVisible]       = useState(true);
@@ -118,8 +114,6 @@ export default function DashboardGuide({ userId, onDismiss }) {
   const [fadeIn, setFadeIn]         = useState(false);
   const playbackRef                 = useRef(null);
   const stepRef                     = useRef(0);
-  const widgetRef                   = useRef(null);
-  const scriptLoaded                = useRef(false);
 
   const step = TOUR_STEPS[stepIndex];
 
@@ -129,54 +123,52 @@ export default function DashboardGuide({ userId, onDismiss }) {
     return () => clearTimeout(t);
   }, []);
 
-  // Position mascot near the target element during tour
+  // Position mascot near the target element
   useEffect(() => {
-    if (mode !== 'tour' || !step) return;
+    if (!step) return;
 
     if (!step.target) {
       setMascotPos({ top: '30%', left: '50%', transform: 'translate(-50%, -50%)' });
       return;
     }
 
-    const position = () => {
-      const el = document.querySelector(step.target);
-      if (!el) return;
+    const el = document.querySelector(step.target);
+    if (!el) return;
 
-      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
 
-      setTimeout(() => {
-        const r = el.getBoundingClientRect();
-        const pos = {};
+    const timer = setTimeout(() => {
+      const r = el.getBoundingClientRect();
+      const pos = {};
 
-        if (step.pointer === 'down') {
-          pos.top = r.top - 160;
-          pos.left = r.left + r.width / 2;
-          pos.transform = 'translateX(-50%)';
-        } else if (step.pointer === 'left') {
-          pos.top = r.top + r.height / 2 - 70;
-          pos.left = r.right + 20;
-        } else if (step.pointer === 'right') {
-          pos.top = r.top + r.height / 2 - 70;
-          pos.left = r.left - 340;
-        } else {
-          pos.top = r.bottom + 20;
-          pos.left = r.left + r.width / 2;
-          pos.transform = 'translateX(-50%)';
-        }
+      if (step.pointer === 'down') {
+        pos.top = r.top - 160;
+        pos.left = r.left + r.width / 2;
+        pos.transform = 'translateX(-50%)';
+      } else if (step.pointer === 'left') {
+        pos.top = r.top + r.height / 2 - 70;
+        pos.left = r.right + 20;
+      } else if (step.pointer === 'right') {
+        pos.top = r.top + r.height / 2 - 70;
+        pos.left = r.left - 340;
+      } else {
+        pos.top = r.bottom + 20;
+        pos.left = r.left + r.width / 2;
+        pos.transform = 'translateX(-50%)';
+      }
 
-        pos.top = Math.max(16, Math.min(window.innerHeight - 220, pos.top));
-        pos.left = Math.max(16, Math.min(window.innerWidth - 360, pos.left));
+      pos.top = Math.max(16, Math.min(window.innerHeight - 220, pos.top));
+      pos.left = Math.max(16, Math.min(window.innerWidth - 360, pos.left));
 
-        setMascotPos(pos);
-      }, 400);
-    };
+      setMascotPos(pos);
+    }, 400);
 
-    position();
-  }, [stepIndex, step, mode]);
+    return () => clearTimeout(timer);
+  }, [stepIndex, step]);
 
-  // Highlight the target element during tour
+  // Highlight the target element
   useEffect(() => {
-    if (mode !== 'tour' || !step?.target) return;
+    if (!step?.target) return;
     const el = document.querySelector(step.target);
     if (!el) return;
 
@@ -201,11 +193,11 @@ export default function DashboardGuide({ userId, onDismiss }) {
       el.style.borderRadius = prev.borderRadius;
       el.style.transition = prev.transition;
     };
-  }, [stepIndex, step, mode]);
+  }, [stepIndex, step]);
 
   // Speak the current step using ElevenLabs TTS
   useEffect(() => {
-    if (mode !== 'tour' || !step || !visible) return;
+    if (!step || !visible) return;
     stepRef.current = stepIndex;
 
     const timer = setTimeout(async () => {
@@ -233,28 +225,7 @@ export default function DashboardGuide({ userId, onDismiss }) {
       }
       setSpeaking(false);
     };
-  }, [stepIndex, visible, step, mode]);
-
-  // Load ElevenLabs agent widget when switching to agent mode
-  useEffect(() => {
-    if (mode !== 'agent' || scriptLoaded.current) return;
-
-    if (widgetRef.current && !widgetRef.current.querySelector('elevenlabs-convai')) {
-      const widget = document.createElement('elevenlabs-convai');
-      widget.setAttribute('agent-id', AGENT_ID);
-      widgetRef.current.appendChild(widget);
-    }
-
-    if (!document.querySelector('script[src*="elevenlabs.io/convai-widget"]')) {
-      const script = document.createElement('script');
-      script.src = 'https://elevenlabs.io/convai-widget/index.js';
-      script.async = true;
-      script.type = 'text/javascript';
-      document.body.appendChild(script);
-    }
-
-    scriptLoaded.current = true;
-  }, [mode]);
+  }, [stepIndex, visible, step]);
 
   const stopSpeech = useCallback(() => {
     if (playbackRef.current) {
@@ -269,8 +240,7 @@ export default function DashboardGuide({ userId, onDismiss }) {
     if (stepIndex < TOUR_STEPS.length - 1) {
       setStepIndex(s => s + 1);
     } else {
-      // Tour finished — offer the agent
-      setMode('agent');
+      dismiss();
     }
   }, [stepIndex, stopSpeech]);
 
@@ -298,100 +268,8 @@ export default function DashboardGuide({ userId, onDismiss }) {
     }
   }, [userId, onDismiss, stopSpeech]);
 
-  const skipToAgent = useCallback(() => {
-    stopSpeech();
-    setMode('agent');
-  }, [stopSpeech]);
+  if (!visible || !step) return null;
 
-  if (!visible) return null;
-
-  // ── Minimized mascot (bottom-right bubble) ──────────────────────────
-  if (mode === 'minimized') {
-    return (
-      <>
-        <div
-          onClick={() => setMode('agent')}
-          style={{
-            position: 'fixed', bottom: 24, right: 24, zIndex: 70,
-            cursor: 'pointer',
-            opacity: fadeIn ? 1 : 0,
-            transition: 'all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)',
-          }}
-        >
-          <div style={{
-            position: 'absolute', inset: -8, borderRadius: '50%',
-            border: '2px solid var(--aubergine-600)', opacity: 0.4,
-            animation: 'pulse-ring 2s ease-in-out infinite',
-          }} />
-          <div style={{
-            width: 64, height: 64, borderRadius: '50%',
-            background: 'var(--aubergine-100)', border: '3px solid var(--aubergine-600)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            boxShadow: '0 4px 20px rgba(91,77,122,0.3)',
-            animation: 'float-mascot 3s ease-in-out infinite',
-          }}>
-            <MascotSVG speaking={false} size={44} />
-          </div>
-          <div style={{
-            position: 'absolute', bottom: '100%', right: 0, marginBottom: 10,
-            padding: '8px 14px', borderRadius: 12, borderBottomRightRadius: 4,
-            background: 'var(--surface)', border: '1px solid var(--line)',
-            boxShadow: '0 4px 16px rgba(0,0,0,0.1)',
-            fontSize: 13, fontWeight: 600, color: 'var(--ink-900)', whiteSpace: 'nowrap',
-          }}>
-            💬 Ask me anything!
-          </div>
-        </div>
-        <style>{guideStyles}</style>
-      </>
-    );
-  }
-
-  // ── Agent mode (conversational widget panel) ────────────────────────
-  if (mode === 'agent') {
-    return (
-      <>
-        <div style={{
-          position: 'fixed', bottom: 24, right: 24, zIndex: 70,
-          width: 380, height: 520, borderRadius: 16, overflow: 'hidden',
-          background: 'var(--surface)', border: '1px solid var(--line)',
-          boxShadow: '0 12px 48px rgba(31,24,32,0.2)',
-          display: 'flex', flexDirection: 'column',
-          opacity: fadeIn ? 1 : 0,
-          transform: fadeIn ? 'translateY(0)' : 'translateY(20px)',
-          transition: 'all 0.3s ease',
-        }}>
-          <div style={{
-            padding: '12px 16px', borderBottom: '1px solid var(--line)',
-            display: 'flex', alignItems: 'center', gap: 10,
-            background: 'var(--aubergine-100)',
-          }}>
-            <MascotSVG speaking={false} size={32} />
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--aubergine-600)' }}>Stitchy</div>
-              <div style={{ fontSize: 11, color: 'var(--ink-500)' }}>Ask me anything about your dashboard</div>
-            </div>
-            <button onClick={() => setMode('minimized')} style={headerBtnStyle} title="Minimize">−</button>
-            <button onClick={dismiss} style={headerBtnStyle} title="Dismiss">✕</button>
-          </div>
-          <div ref={widgetRef} style={{ flex: 1, position: 'relative', overflow: 'hidden' }} />
-          <div style={{
-            padding: '10px 16px', borderTop: '1px solid var(--line)',
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            background: 'var(--cream-50)',
-          }}>
-            <span style={{ fontSize: 11, color: 'var(--ink-400)' }}>Powered by ElevenLabs</span>
-            <button onClick={dismiss} style={{ padding: '4px 12px', borderRadius: 6, fontSize: 12, fontWeight: 600, color: 'var(--ink-500)', cursor: 'pointer', background: 'transparent' }}>
-              Dismiss
-            </button>
-          </div>
-        </div>
-        <style>{guideStyles}</style>
-      </>
-    );
-  }
-
-  // ── Tour mode (guided walkthrough with TTS) ─────────────────────────
   const isLast  = stepIndex === TOUR_STEPS.length - 1;
   const isFirst = stepIndex === 0;
 
@@ -456,10 +334,12 @@ export default function DashboardGuide({ userId, onDismiss }) {
             )}
             <div style={{ flex: 1 }} />
 
-            {/* Skip to agent */}
-            <button onClick={skipToAgent} style={{ padding: '5px 10px', borderRadius: 8, fontSize: 11, fontWeight: 600, color: 'var(--ink-400)', cursor: 'pointer', background: 'transparent' }}>
-              Skip tour
-            </button>
+            {/* Skip tour */}
+            {!isLast && (
+              <button onClick={dismiss} style={{ padding: '5px 10px', borderRadius: 8, fontSize: 11, fontWeight: 600, color: 'var(--ink-400)', cursor: 'pointer', background: 'transparent' }}>
+                Skip tour
+              </button>
+            )}
 
             {/* Next / Finish */}
             <button onClick={goNext} style={{
@@ -496,37 +376,20 @@ export default function DashboardGuide({ userId, onDismiss }) {
         </div>
       </div>
 
-      <style>{guideStyles}</style>
+      <style>{`
+        @keyframes float-mascot {
+          0%, 100% { transform: translateY(0); }
+          50% { transform: translateY(-6px); }
+        }
+        @keyframes bounce-mascot {
+          0%, 100% { transform: translateY(0) scale(1); }
+          50% { transform: translateY(-4px) scale(1.05); }
+        }
+        @keyframes pulse-guide {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.6; }
+        }
+      `}</style>
     </>
   );
 }
-
-const headerBtnStyle = {
-  width: 28, height: 28, borderRadius: '50%',
-  background: 'var(--surface)', border: '1px solid var(--line)',
-  display: 'flex', alignItems: 'center', justifyContent: 'center',
-  cursor: 'pointer', fontSize: 14, color: 'var(--ink-500)',
-};
-
-const guideStyles = `
-  @keyframes float-mascot {
-    0%, 100% { transform: translateY(0); }
-    50% { transform: translateY(-6px); }
-  }
-  @keyframes bounce-mascot {
-    0%, 100% { transform: translateY(0) scale(1); }
-    50% { transform: translateY(-4px) scale(1.05); }
-  }
-  @keyframes pulse-guide {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.6; }
-  }
-  @keyframes pulse-ring {
-    0%, 100% { transform: scale(1); opacity: 0.4; }
-    50% { transform: scale(1.15); opacity: 0; }
-  }
-  elevenlabs-convai {
-    --elevenlabs-convai-widget-width: 100% !important;
-    --elevenlabs-convai-widget-height: 100% !important;
-  }
-`;
